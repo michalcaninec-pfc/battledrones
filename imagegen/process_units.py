@@ -25,6 +25,9 @@ OUT = Path(__file__).parent / "output"
 ALL_UNITS = ["stinger", "flak-crawler", "wasp", "raptor"]
 FRAME = 32
 MAX_DIAG = 30.0
+# Per-unit de-res alpha threshold: the raptor's very thin tail boom needs
+# an even lower cutoff to stay connected to its rear rotors.
+ALPHA_THRESH = {"raptor": 48}
 
 KEY = (255, 0, 255)
 TOLERANCE = 120
@@ -43,7 +46,10 @@ def chroma_key(img: Image.Image) -> Image.Image:
     return img
 
 
-def deres(img: Image.Image, size: tuple) -> Image.Image:
+def deres(img: Image.Image, size: tuple, alpha_thresh: int = 96) -> Image.Image:
+    # alpha_thresh below 128 lets thin high-res features (rotor arms,
+    # tail booms) survive the downscale instead of leaving their end
+    # fittings floating as disconnected pixels.
     a = np.asarray(img, dtype=np.float32)
     alpha = a[..., 3:4] / 255.0
     pre = np.concatenate([a[..., :3] * alpha, a[..., 3:4]], axis=-1)
@@ -52,8 +58,36 @@ def deres(img: Image.Image, size: tuple) -> Image.Image:
     )
     sa = small[..., 3:4]
     rgb = np.where(sa > 0, small[..., :3] * 255.0 / np.maximum(sa, 1e-6), 0)
-    out = np.concatenate([np.clip(rgb, 0, 255), np.where(sa >= 128, 255, 0)], axis=-1)
+    out = np.concatenate([np.clip(rgb, 0, 255), np.where(sa >= alpha_thresh, 255, 0)], axis=-1)
     return Image.fromarray(out.astype(np.uint8), "RGBA")
+
+
+def despeckle(frame: Image.Image, min_px: int = 3) -> Image.Image:
+    """Drop tiny disconnected alpha components (<min_px pixels) — debris
+    left when thin high-res features fall below the alpha threshold."""
+    a = np.asarray(frame.getchannel("A"), dtype=np.uint8)
+    seen = np.zeros_like(a, dtype=bool)
+    h, w = a.shape
+    for y in range(h):
+        for x in range(w):
+            if a[y, x] == 0 or seen[y, x]:
+                continue
+            stack, comp = [(y, x)], []
+            seen[y, x] = True
+            while stack:
+                cy, cx = stack.pop()
+                comp.append((cy, cx))
+                for ny, nx in ((cy-1, cx), (cy+1, cx), (cy, cx-1), (cy, cx+1),
+                               (cy-1, cx-1), (cy-1, cx+1), (cy+1, cx-1), (cy+1, cx+1)):
+                    if 0 <= ny < h and 0 <= nx < w and a[ny, nx] > 0 and not seen[ny, nx]:
+                        seen[ny, nx] = True
+                        stack.append((ny, nx))
+            if len(comp) < min_px:
+                for cy, cx in comp:
+                    a[cy, cx] = 0
+    out = frame.copy()
+    out.putalpha(Image.fromarray(a))
+    return out
 
 
 def quantize_shared(frames: list) -> list:
@@ -95,10 +129,10 @@ def process(unit: str) -> None:
     small_side = max(1, round(side * scale))
     for i in range(8):
         rot = canvas.rotate(-45 * i, resample=Image.BICUBIC)
-        small = deres(rot, (small_side, small_side))
+        small = deres(rot, (small_side, small_side), ALPHA_THRESH.get(unit, 96))
         frame = Image.new("RGBA", (FRAME, FRAME), (0, 0, 0, 0))
         frame.alpha_composite(small, ((FRAME - small_side) // 2, (FRAME - small_side) // 2))
-        frames.append(frame)
+        frames.append(despeckle(frame))
     frames = quantize_shared(frames)
 
     sheet = Image.new("RGBA", (8 * FRAME, FRAME), (0, 0, 0, 0))

@@ -4,7 +4,8 @@ Experiment in generating game sprites with OpenAI's image models, following
 the technique documented in `notes/animated-sprite-imagegen-notes.md`
 (distilled from openai/codex's imagegen sample and openai/skills' hatch-pet
 skill). Subjects so far: the 6-frame explosion FX sprite, the 3-state
-HQ building, and the harvester unit (2 states × 8 directions) from ART.md.
+HQ building, and five units — harvester (2 states × 8 directions),
+stinger, flak-crawler, wasp and raptor (8 directions each) — from ART.md.
 
 ## Explosion pipeline
 
@@ -54,6 +55,20 @@ Dependencies: `pip install pillow requests`.
    so its bounding-box diagonal is <32px — no clipping at any rotation
    angle. Output: the 256×64 sheet (row 0 empty, row 1 loaded).
 
+## Batch units pipeline (stinger, flak-crawler, wasp, raptor)
+
+1. `generate_units.py` — one `images/generations` call per unit, all four
+   fired concurrently with a thread pool (each call takes a minute-plus,
+   so parallelism is nearly a 4× wall-clock win). Single art state each;
+   no edits calls needed.
+2. `process_units.py` — the harvester de-res pipeline generalized, plus
+   two refinements: a despeckle pass that drops disconnected alpha
+   components under 3px, and a tunable de-res alpha threshold (default
+   96, raptor 48) so thin features — the wasp's rotor stub arms, the
+   raptor's tail boom — stay connected to the hull instead of leaving
+   their rotor pods floating as debris. Connectivity is verified by
+   connected-component counting per frame.
+
 ## Outputs (`output/`)
 
 | File | What |
@@ -70,6 +85,10 @@ Dependencies: `pip install pillow requests`.
 | `harvester-frames/{empty,loaded}.png` | High-res transparent North-facing states |
 | `harvester.png` | Game-ready 256×64 sheet for `public/assets/sprites/units/blue/harvester.png` |
 | `harvester-preview.gif` | 4× preview cycling the 8 directions |
+| `{stinger,flak-crawler,wasp,raptor}-raw.png` | Raw model outputs (1024×1024, magenta background) |
+| `unit-frames/<unit>.png` | High-res transparent North-facing sprites |
+| `{stinger,flak-crawler,wasp,raptor}.png` | Game-ready 256×32 sheets for `public/assets/sprites/units/blue/` |
+| `<unit>-preview.gif` | 4× previews cycling the 8 directions |
 
 ## Notes / learnings
 
