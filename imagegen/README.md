@@ -3,9 +3,14 @@
 Experiment in generating game sprites with OpenAI's image models, following
 the technique documented in `notes/animated-sprite-imagegen-notes.md`
 (distilled from openai/codex's imagegen sample and openai/skills' hatch-pet
-skill). Subjects so far: the 6-frame explosion FX sprite, the 3-state
-HQ building, and five units — harvester (2 states × 8 directions),
-stinger, flak-crawler, wasp and raptor (8 directions each) — from ART.md.
+skill). The complete blue-faction sprite set from ART.md is generated: all six
+units, all buildings (HQ, fab-plant, airpad, turret base + head), the
+terrain tiles, the FX (explosion, muzzle, bolt), and the PWA icons.
+Deliberately NOT generated: `units/shadow.png` (a translucent
+engine-tinted blob — chroma keying can't produce partial alpha, and the
+programmatic placeholder is already ideal) and the red faction (should
+be a palette swap of these pixels, guaranteeing ART.md's matched
+silhouettes).
 
 ## Explosion pipeline
 
@@ -69,6 +74,27 @@ Dependencies: `pip install pillow requests`.
    their rotor pods floating as debris. Connectivity is verified by
    connected-component counting per frame.
 
+## Remaining-set pipeline (generate_rest.py / process_rest.py)
+
+Eleven independent chains run in parallel (17 API calls): scout,
+turret head, turret base, muzzle, bolt, three terrain textures (with an
+edits chain full → half → empty so the scrap depletion states share one
+layout), fab-plant and airpad (edits-anchored damage states like the
+HQ), and the app icon. Processing notes:
+
+- **Turret head pivot**: the head spins in place on its base, so frames
+  must rotate about the gun HOUSING, not the content bbox centre (the
+  barrels pull the bbox north). The housing is detected as the rows
+  ≥60% of max content width and the pivot set to their centroid.
+- **Terrain tiles are full-bleed** — no magenta, no keying: prompts ask
+  for seamless edge-to-edge textures, then 32×32 tiles are BOX-downscaled
+  crops (three different crops of one ground texture make tile variants
+  A/B/C for free; two crops of the rock texture likewise).
+- The scout uses a smaller content budget (24px diagonal vs 30) so it
+  keeps its tiny-fragile personality next to the other units.
+- Icons are plain BOX downscales of a full-bleed dark generation — no
+  transparency involved anywhere.
+
 ## Outputs (`output/`)
 
 | File | What |
@@ -89,6 +115,12 @@ Dependencies: `pip install pillow requests`.
 | `unit-frames/<unit>.png` | High-res transparent North-facing sprites |
 | `{stinger,flak-crawler,wasp,raptor}.png` | Game-ready 256×32 sheets for `public/assets/sprites/units/blue/` |
 | `<unit>-preview.gif` | 4× previews cycling the 8 directions |
+| `scout.png`, `turret-head.png` | Game-ready 256×32 direction sheets |
+| `turret-base.png`, `muzzle.png`, `bolt.png` | Game-ready 32×32 single frames |
+| `tiles.png` | Game-ready 256×32 terrain strip (ground ×3, rock ×2, scrap full/half/empty) |
+| `fab-plant.png`, `airpad.png` | Game-ready 192×64 idle/damaged/rubble sheets |
+| `{fab-plant,airpad}-frames/`, `tile-*-raw.png`, etc. | High-res states and raw model outputs |
+| `icon-512.png`, `icon-192.png` | PWA icons for `public/icons/` |
 
 ## Notes / learnings
 
