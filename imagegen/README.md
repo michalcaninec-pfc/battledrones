@@ -3,8 +3,8 @@
 Experiment in generating game sprites with OpenAI's image models, following
 the technique documented in `notes/animated-sprite-imagegen-notes.md`
 (distilled from openai/codex's imagegen sample and openai/skills' hatch-pet
-skill). Subjects so far: the 6-frame explosion FX sprite and the 3-state
-HQ building from ART.md.
+skill). Subjects so far: the 6-frame explosion FX sprite, the 3-state
+HQ building, and the harvester unit (2 states × 8 directions) from ART.md.
 
 ## Explosion pipeline
 
@@ -38,6 +38,22 @@ Dependencies: `pip install pillow requests`.
    frame (ART.md's ~3px building margin), assembled into the 288×96
    idle/damaged/rubble sheet.
 
+## Harvester pipeline (unit: states × rotations)
+
+1. `generate_harvester.py` — two API calls: `images/generations` for the
+   canonical North-facing empty harvester, one `images/edits` call (idle
+   image attached) to heap the cargo bay with teal scrap. The 8 direction
+   frames per state are NOT generated: ART.md's direction convention is
+   pure rotation, so they're derived programmatically.
+2. `process_harvester.py` — chroma-key + despill, shared bbox across both
+   states, then per direction: rotate the HIGH-RES image (bicubic),
+   **de-res** to 32×32 (premultiplied-alpha BOX downscale so transparent
+   pixels don't darken edges, hard alpha threshold for crisp borders),
+   and finally quantize all 16 frames against ONE shared 24-color palette
+   so rotation frames don't shimmer against each other. Content is scaled
+   so its bounding-box diagonal is <32px — no clipping at any rotation
+   angle. Output: the 256×64 sheet (row 0 empty, row 1 loaded).
+
 ## Outputs (`output/`)
 
 | File | What |
@@ -50,6 +66,10 @@ Dependencies: `pip install pillow requests`.
 | `hq-frames/{idle,damaged,rubble}.png` | High-res transparent states (917×917) |
 | `hq.png` | Game-ready 288×96 sheet for `public/assets/sprites/buildings/blue/hq.png` |
 | `hq-preview.png` | 2× side-by-side preview of the three states |
+| `harvester-raw-{empty,loaded}.png` | Raw model outputs (1024×1024, magenta background) |
+| `harvester-frames/{empty,loaded}.png` | High-res transparent North-facing states |
+| `harvester.png` | Game-ready 256×64 sheet for `public/assets/sprites/units/blue/harvester.png` |
+| `harvester-preview.gif` | 4× preview cycling the 8 directions |
 
 ## Notes / learnings
 
@@ -74,3 +94,10 @@ Dependencies: `pip install pillow requests`.
 - This was generated for the blue faction only. Red should be produced by
   programmatic palette swap, not regeneration, to guarantee the matched
   silhouettes ART.md requires.
+- Naive nearest-neighbour downscaling of dense high-res art to 32×32
+  produces speckle noise — every output pixel samples one arbitrary
+  source pixel. The fix that made the harvester readable: area-average
+  (BOX) downscale in premultiplied alpha, hard alpha threshold, then one
+  shared adaptive palette across all frames. Rotating at high resolution
+  before de-res beats rotating 32px art (the placeholder generator's
+  approach) on diagonal frames.
