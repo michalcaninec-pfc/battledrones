@@ -1033,17 +1033,20 @@ export class GameScene {
 
   private setupInput(): void {
     const rig = this.stage.rig;
+    /** Shift was held on the click that fires a tap: it adds or removes a unit. */
+    let shift = false;
     this.gest = new GestureRecognizer({
       onTap: (sx, sy, type) => {
         if (this.place.tap(sx, sy, type)) return; // placing: move the ghost / build
         const p = this.worldAt(sx, sy);
         if (this.powerUi?.tapWorld(p.x, p.y)) return; // an armed calldown fires here
-        this.ctrl.tapWorld(p.x, p.y, this.pick(sx, sy));
+        this.ctrl.tapWorld(p.x, p.y, this.pick(sx, sy), shift);
       },
       onDoubleTap: (sx, sy) => {
         if (this.place.tap(sx, sy)) return; // 2nd tap lands on the ghost it just moved: build
         const hit = this.pick(sx, sy);
         if (hit.kind !== "ownUnit") return;
+        if (shift) return this.ctrl.toggleUnit(hit.id); // quick Shift+clicks each toggle a unit
         const kind = this.world.units.get(hit.id)?.kind;
         const ids = [...this.world.units.values()]
           .filter((u) => u.faction === PLAYER && u.kind === kind && rig.onScreen(u.x, u.y))
@@ -1144,6 +1147,7 @@ export class GameScene {
     };
     const up = (e: PointerEvent) => {
       const p = toPointer(e);
+      shift = e.shiftKey;
       if (!this.place.up(p)) this.gest.up(p, performance.now());
     };
     const cancel = (e: PointerEvent) => {

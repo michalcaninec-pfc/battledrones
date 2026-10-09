@@ -187,6 +187,34 @@ describe("controller: touch placement", () => {
     b.order = { type: "move", x: 20, y: 20 };
     expect(c.idleArmy()).toEqual([a.id]);
   });
+
+  it("Shift+click adds a unit to the selection, or takes it out", () => {
+    const w = field();
+    const c = new Controller(w);
+    const [a, b, d] = [1, 2, 3].map((i) => spawnUnit(w, "stinger", "blue", 10 + i, 10));
+    c.tapWorld(11, 10, { kind: "ownUnit", id: a!.id });
+    c.tapWorld(12, 10, { kind: "ownUnit", id: b!.id }, true);
+    expect([...c.selectedUnits]).toEqual([a!.id, b!.id]);
+    c.forceMove = true;
+    const before = c.selectedUnits;
+    c.tapWorld(11, 10, { kind: "ownUnit", id: a!.id }, true);
+    expect([...c.selectedUnits]).toEqual([b!.id]);
+    expect(c.selectedUnits).toBe(before); // taking one out is quiet (no voice)
+    expect(c.forceMove).toBe(true); // an armed Move only survives
+    c.tapWorld(13, 10, { kind: "ownUnit", id: d!.id }, true);
+    expect([...c.selectedUnits]).toEqual([b!.id, d!.id]);
+    expect(c.selectedUnits).not.toBe(before); // adding one is a fresh selection: the voices answer
+    // Shift only changes taps on your own units: the ground still gets the (Move only) order
+    c.tapWorld(20.5, 20.5, { kind: "ground" }, true);
+    expect(c.drainCommands()).toEqual([{ type: "move", faction: "blue", unitIds: [b!.id, d!.id], x: 20.5, y: 20.5 }]);
+    // a Shift+click on a unit while a building is selected starts a unit selection
+    const hq = hqOf(w, "blue")!;
+    c.clearSelection();
+    c.selectedBuilding = hq.id;
+    c.tapWorld(11, 10, { kind: "ownUnit", id: a!.id }, true);
+    expect(c.selectedBuilding).toBeNull();
+    expect([...c.selectedUnits]).toEqual([a!.id]);
+  });
 });
 
 describe("squads", () => {

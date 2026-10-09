@@ -71,6 +71,14 @@ export class Controller {
     this.forceMove = false;
   }
 
+  /** Shift+click: add a unit to the selection, or take it out if it's already in. */
+  toggleUnit(id: number): void {
+    this.selectedBuilding = null;
+    if (this.selectedUnits.delete(id)) return; // taken out quietly
+    // adding makes a fresh selection set, so the voices answer
+    this.selectedUnits = new Set([...this.selectedUnits, id]);
+  }
+
   /** Select every combat unit the player owns. */
   selectArmy(): void {
     const ids = [...this.world.units.values()]
@@ -130,8 +138,8 @@ export class Controller {
     return true;
   }
 
-  /** Player tapped world position (wx, wy in tile units). */
-  tapWorld(wx: number, wy: number, hit: TapHit): void {
+  /** Player tapped world position (wx, wy in tile units); `toggle` (Shift) adds or removes a tapped unit. */
+  tapWorld(wx: number, wy: number, hit: TapHit, toggle = false): void {
     const w = this.world;
     this.lastFeedback = null;
     if (this.spectator) {
@@ -149,7 +157,8 @@ export class Controller {
     }
 
     if (hit.kind === "ownUnit") {
-      this.selectUnits([hit.id]);
+      if (toggle) this.toggleUnit(hit.id);
+      else this.selectUnits([hit.id]);
       return;
     }
     if (hit.kind === "ownBuilding") {
