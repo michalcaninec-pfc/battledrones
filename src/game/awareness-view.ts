@@ -195,11 +195,14 @@ export class Awareness {
 
   // --------------------------------------------------------- render side --
 
-  /** World tiles → CSS px on screen (current camera, no one-frame lag). */
+  /**
+   * World tiles → CSS px on screen (current camera, no one-frame lag). A point
+   * behind the camera (far south of it) comes back far below the screen, in its
+   * direction from the arrows' centre.
+   */
   private toScreen(x: number, y: number): { x: number; y: number } {
-    const p = this.h.rig.project(x, y);
-    // (a point behind the camera can't happen with a downward-looking rig, but keep arrows sane)
-    return p.behind ? { x: p.x, y: -1e4 } : p;
+    const m = this.ui.layout().markers;
+    return this.h.rig.toward(x, y, (m.x0 + m.x1) / 2, (m.y0 + m.y1) / 2);
   }
 
   /** Middle of the visible battlefield (tiles), clear of the HUD. */

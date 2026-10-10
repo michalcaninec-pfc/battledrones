@@ -22,6 +22,7 @@ import {
   type Rect
 } from "../src/game/awareness";
 import { BattleCallouts, type RadioLine } from "../src/game/callouts";
+import { CameraRig } from "../src/game/three/camera";
 
 const TICK_MS = 1000 / TICK_RATE;
 
@@ -458,5 +459,35 @@ describe("edge arrows geometry", () => {
     expect(Math.abs(q.y - 300)).toBeLessThan(80);
     const all: Rect = { x0: 0, y0: 0, x1: 1000, y1: 1000 };
     expect(placeOnEdge(R, p, 46, [all], 200)).toBeNull();
+  });
+
+  it("points south at a fight behind the camera (the far side of a 96-tile map)", () => {
+    const rig = new CameraRig();
+    rig.bounds = { x0: -2, y0: -2, x1: 98, y1: 98 };
+    rig.zoom = 42;
+    rig.setViewport(390, 844);
+    rig.centerOn(48, 10);
+    const c = { x: (R.x0 + R.x1) / 2, y: (R.y0 + R.y1) / 2 };
+    const aim = (x: number, y: number) => {
+      const q = rig.toward(x, y, c.x, c.y);
+      return Math.atan2(q.y - c.y, q.x - c.x);
+    };
+    // the tilted camera can't see this far south: project() mirrors these up past the horizon
+    for (const x of [8, 48, 90]) expect(rig.project(x, 92).behind).toBe(true);
+    expect(aim(48, 92)).toBeCloseTo(Math.PI / 2, 1);
+    const se = aim(90, 92);
+    expect(se > 0 && se < Math.PI / 2).toBe(true);
+    const sw = aim(8, 92);
+    expect(sw > Math.PI / 2 && sw < Math.PI).toBe(true);
+    // the marker goes on the bottom edge, and the direction doesn't jump across the camera plane
+    const q = rig.toward(48, 92, c.x, c.y);
+    expect(edgePoint(R, q.x, q.y).y).toBeCloseTo(R.y1);
+    let y = 60;
+    while (!rig.project(70, y).behind) y += 0.5;
+    expect(rig.project(70, y - 0.5).behind).toBe(false);
+    expect(Math.abs(aim(70, y) - aim(70, y - 0.5))).toBeLessThan(0.05);
+    // a point the camera can see comes back as drawn
+    const seen = rig.project(60, 20);
+    expect(rig.toward(60, 20, c.x, c.y)).toEqual({ x: seen.x, y: seen.y });
   });
 });

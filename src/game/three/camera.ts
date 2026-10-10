@@ -86,6 +86,31 @@ export class CameraRig {
     return { x: (ndc.x * 0.5 + 0.5) * this.width, y: (-ndc.y * 0.5 + 0.5) * this.height, behind: ndc.z > 1 };
   }
 
+  /**
+   * Tile point (x, y) → CSS px to point at it from screen point (sx, sy): where
+   * it is drawn, or, for a ground point behind the camera (far enough south of
+   * the tilted rig: across a 96-tile map, or less zoomed in), a point far below
+   * the screen on the ground line from (sx, sy) towards it. project() mirrors
+   * such a point up past the horizon, i.e. north of the view.
+   */
+  toward(x: number, y: number, sx: number, sy: number): Pt {
+    const p = this.project(x, y);
+    if (!p.behind) return { x: p.x, y: p.y };
+    const g = this.ground(sx, sy);
+    const c = this.camera;
+    c.getWorldDirection(tmp);
+    const depth = (px: number, pz: number) =>
+      (px - c.position.x) * tmp.x - c.position.y * tmp.y + (pz - c.position.z) * tmp.z;
+    const d0 = depth(g.x, g.y);
+    const d1 = depth(x, y);
+    // (past the far plane rather than behind: project() has the direction right)
+    if (d1 >= d0) return { x: p.x, y: p.y };
+    // walk from g towards (x, y) until a tile in front of the camera
+    const k = (d0 - 1) / (d0 - d1);
+    const q = this.project(g.x + (x - g.x) * k, g.y + (y - g.y) * k);
+    return { x: q.x, y: q.y };
+  }
+
   /** CSS px → the ground point (tiles) under it, on the plane at height h. */
   ground(sx: number, sy: number, h = 0): Pt {
     const c = this.camera;
