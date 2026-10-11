@@ -490,7 +490,10 @@ and loses hard to Rocket Squads.
   USELESS test (no Sniper Team sent at a Titan), and it must be able to get
   within range (no tank on an island). Units with orders, units already
   shooting something in range and squads crewing an island relay are never
-  pulled, and calldowns (credited to the enemy HQ) draw nobody.
+  pulled, and calldowns (credited to the enemy HQ) draw nobody. AI vs AI
+  (`tools/pacing.ts`, 2 seeds, 360 matches, before → after): draws 2% → 1%,
+  decided median 11:39 → 11:10, the 4:00 leader won 74% → 77%, and every
+  personality's win rate moved 3 points or less, all within the panel's noise.
 - Auto-acquire targets in range; attack-move is the default command, with
   a "Move only" chip for retreats.
 - **Menders are shot first.** Auto-targeting (units and turrets alike)
