@@ -30,6 +30,7 @@ Outputs:
     public/assets/icons/<kind>.webp                 128px HUD icons (blue, composited)
     public/assets/ui/keyart-{portrait,landscape}.webp
     public/icons/icon-{192,512}.png                 PWA icons
+    public/icons/apple-touch-icon.png               180px iOS Home Screen icon
     art/previews/atlas-preview.png                  QA contact sheet
 
 Conventions:
@@ -808,6 +809,10 @@ def write_ui() -> list[Path]:
         p = OUT_PWA / f"icon-{sz}.png"
         icon.resize((sz, sz), Image.Resampling.LANCZOS).save(p, optimize=True)
         out.append(p)
+    # iOS Home Screen: exactly 180 px, opaque, square corners (iOS rounds them)
+    p = OUT_PWA / "apple-touch-icon.png"
+    icon.resize((180, 180), Image.Resampling.LANCZOS).save(p, optimize=True)
+    out.append(p)
     return out
 
 

@@ -78,6 +78,8 @@ export default defineConfig({
         background_color: "#070a10",
         theme_color: "#070a10",
         icons: [
+          // recent iOS reads the Home Screen icon from here too: PNG only, opaque
+          { src: "icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
           { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
           { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
           {

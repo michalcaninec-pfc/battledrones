@@ -108,6 +108,7 @@ Outputs and the contract the engine relies on:
 | `public/assets/icons/<kind>.webp` | 128 px HUD portraits (blue, turrets composited; content fit to 112 px) |
 | `public/assets/ui/keyart-{portrait,landscape}.webp` | Menu backgrounds |
 | `public/icons/icon-{192,512}.png` | PWA icons |
+| `public/icons/apple-touch-icon.png` | 180 px iOS Home Screen icon (opaque, square corners) |
 | `art/previews/atlas-preview.png` | QA contact sheet |
 
 Frame names: `u/<faction>/<unit>` (hull or body), `u/<faction>/<unit>-turret`,
