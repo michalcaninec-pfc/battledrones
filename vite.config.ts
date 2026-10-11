@@ -1,10 +1,35 @@
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { MAP_ART } from "./src/game/map-art";
+
+/**
+ * Each map's terrain revision: a hash of its painted chunks (art/terrain.py
+ * writes a folder of them per map). The game asks for `t_C_R.webp?v=<revision>`
+ * (src/game/map-art.ts), so the cache-first map cache below never serves a
+ * repainted map's old chunks, while maps that weren't repainted stay cached.
+ */
+function terrainRevisions(): Record<string, string> {
+  const dir = fileURLToPath(new URL("public/assets/maps", import.meta.url));
+  const revs: Record<string, string> = {};
+  for (const map of readdirSync(dir, { withFileTypes: true })) {
+    if (!map.isDirectory()) continue;
+    const hash = createHash("sha256");
+    for (const f of readdirSync(join(dir, map.name)).filter((f) => /^t_\d+_\d+\.webp$/.test(f)).sort())
+      hash.update(f).update(readFileSync(join(dir, map.name, f)));
+    revs[map.name] = hash.digest("hex").slice(0, 12);
+  }
+  return revs;
+}
 
 export default defineConfig({
   // Local builds are portable; Pages supplies an absolute base for each version.
   base: "./",
   server: { host: true },
+  define: { __TERRAIN_REVS__: JSON.stringify(terrainRevisions()) },
   build: {
     target: "es2022",
     outDir: "dist",
@@ -31,7 +56,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {
-            urlPattern: /\/assets\/maps\/.*\.webp$/,
+            urlPattern: MAP_ART,
             handler: "CacheFirst",
             options: { cacheName: "battledrones-maps", expiration: { maxEntries: 120 } }
           },

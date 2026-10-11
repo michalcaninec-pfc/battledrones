@@ -53,6 +53,11 @@ Bay; draft spec in INFANTRY.md) took it to 15 units and 9 buildings.
   shows a **"✨ New version ready · Update ↻"** pill whose button reloads into
   it (`src/ui/update.ts`). A build that lands mid-match is never pushed on the
   player: every Menu button reloads, so the next menu already runs it.
+  Painted map terrain is cached on first play and served cache-first after
+  that, so its chunk URLs carry the map's revision, a hash of its chunks
+  taken at build time (`src/game/map-art.ts`): a repainted map comes from new
+  URLs, never from a returning player's cache (where the Archipelago's
+  96-tile paint once turned up on its 108-tile grid).
 - **Testing:** Vitest for the simulation (economy, pathfinding, combat,
   terrain, tech tree, AI, maps); a Playwright smoke test that drives the
   real touch input paths; a headless balance harness (`tools/balance.ts`).

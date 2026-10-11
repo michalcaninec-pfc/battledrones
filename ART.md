@@ -123,7 +123,10 @@ px per tile; the world is 64 px per tile, so sprites draw at 0.5×.
 Each map's grid (exported from `src/sim/maps.ts` by
 `tools/export-maps.ts`) is painted into a full-map image at **48 px per
 tile**, written as 1024 px WebP chunks (`public/assets/maps/<id>/t_<c>_<r>.webp`)
-plus `meta.json` and a 256 px `thumb.webp` (map picker and minimap). It:
+plus `meta.json` and a 256 px `thumb.webp` (map picker and minimap). The
+game asks for the chunks with a hash of them on their URLs (`vite.config.ts`),
+so a repainted map reaches players past the service worker's cache with
+nothing to bump by hand. It:
 
 - makes the generated materials tile seamlessly and hides repetition with
   large-scale noise variation, blending in a secondary ground material;

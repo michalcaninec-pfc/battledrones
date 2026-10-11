@@ -1,6 +1,9 @@
 import * as THREE from "three";
 import type { Biome, BuildingKind, UnitKind } from "../sim/types";
+import { terrainChunkUrl } from "./map-art";
 import type { TerrainArt } from "./three/terrain";
+
+export { mapAssetBase } from "./map-art";
 
 /** Painted terrain images: 48 px per tile, split into 1024 px chunks. */
 export const TERRAIN_PX = 48;
@@ -13,10 +16,6 @@ export const UNIT_KINDS: UnitKind[] = [
 export const BUILDING_KINDS: BuildingKind[] = [
   "hq", "fab-plant", "airpad", "tech-lab", "depot", "turret", "sam-site", "radar", "assembly-bay"
 ];
-
-export function mapAssetBase(mapId: string): string {
-  return `assets/maps/${mapId}`;
-}
 
 /** Terrain chunk grid for a map (chunks per side). */
 export function terrainChunks(mapSize: number): number {
@@ -62,7 +61,7 @@ export async function loadTerrainArt(
       row.push(null);
       jobs.push(
         loader
-          .loadAsync(`${mapAssetBase(mapId)}/t_${c}_${r}.webp`)
+          .loadAsync(terrainChunkUrl(mapId, c, r))
           .then((tex) => {
             row[c] = tex;
           })
