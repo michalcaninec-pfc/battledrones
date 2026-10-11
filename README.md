@@ -192,6 +192,7 @@ llm battledrones run --blue gpt-6-luna --red gpt-6-luna --map riverlands --seed 
 npm run arena run -- --blue scripted --red ai:rush:hard    # built-in seats, no model
 npm run arena serve -- --blue seat --red ai:balanced:easy  # seat URLs for any agent (HTTP or MCP)
 npm run arena replay battles/<file>.json                   # re-run a record, check its hash trail
+npm run arena upgrade battles/<file>.json                  # bring a record from older sim code up to this one
 npm run arena watch battles/<file>.json                    # the dev-only 3D viewer (&follow: live)
 npm run arena stats -- battles/*.json --detail             # results by model, side, map, opener
 ```

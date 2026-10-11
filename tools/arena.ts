@@ -323,8 +323,9 @@ function upgrade() {
     }
     const u = resimulate(r, { commit, sim });
     writeRecord(f, u);
-    const same = u.end?.winner === r.end?.winner && u.end?.tick === r.end?.tick;
-    console.log(`${basename(f)}: sim ${r.sim ?? "?"} → ${sim}; was: ${when(r.end)}; now: ${when(u.end)}${same ? "" : "  (re-simulated ending differs)"}`);
+    const moved = (u.end?.tick ?? 0) - (r.end?.tick ?? 0);
+    const note = u.end?.winner !== r.end?.winner ? "  (a different ending)" : moved ? `  (${Math.abs(moved / TICK_RATE)} s ${moved > 0 ? "later" : "sooner"})` : "";
+    console.log(`${basename(f)}: sim ${r.sim ?? "?"} → ${sim}; was: ${when(r.end)}; now: ${when(u.end)}${note}`);
   }
 }
 

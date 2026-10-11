@@ -133,7 +133,8 @@ export function replayPanel(feed: ReplayFeed, scene: GameScene): ReplayPanel {
 function asPlayed(r: ReplayFeed["record"]): string | null {
   const was = r.upgraded?.[0]?.end;
   const now = r.end;
-  if (!was || (was.winner === now?.winner && was.tick === now?.tick)) return null;
+  // (an ending a few ticks off isn't worth a note)
+  if (!was || (was.winner === now?.winner && Math.abs(was.tick - (now?.tick ?? 0)) < 10)) return null;
   const how = was.winner ? `${was.winner} won at ${clock(was.tick)}` : `it was a draw at ${clock(was.tick)}`;
   return `Re-simulated on newer game code, so the ending differs: as played, ${how}`;
 }

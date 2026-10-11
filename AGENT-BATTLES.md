@@ -667,6 +667,16 @@ the working tree's. If they differ, they make a `git worktree` at the
 record's commit (cached in `.arena-builds/`) and run there. Old battles keep
 working without any build archive.
 
+The public game only has its own sim, so a record pasted into it must match
+that. `tools/arena.ts upgrade <records>` brings records up to the current
+sim: it re-runs their commands (`resimulate` in `src/arena/record.ts`) and
+writes the new hash trail and ending, keeping what the record said before in
+`upgraded`. The commands were chosen against the old sim's world, so a
+re-simulated battle drifts: a unit that died a moment sooner ignores its last
+order. If no HQ has fallen by the original ending it plays on with the
+standing orders until one does (or the time limit), and the viewer shows the
+ending as played when the new one differs.
+
 ## Watching
 
 **The viewer** is the game's existing AI-vs-AI watch mode (the fog off by
@@ -700,14 +710,24 @@ every second and plays each new round at 1× as it arrives. The action comes
 in 5-second bursts, with "Blue is thinking… 0:23" in between. That's all on
 localhost and needs no server beyond Vite's.
 
-**Browsers.** The runner is Node, which uses the same JavaScript engine as
-Chrome and Edge (V8), so replays should match exactly there, and the hash
-check confirms it. Safari and Firefox may drift. ECMAScript lets each engine
-round `Math.sin`, `cos`, `atan2`, `hypot` and `pow` in its own way, and the
-sim calls them about 100 times. The fix is arithmetic-only versions in
-`src/sim/fmath.ts`, plus a test that bans the originals in `src/sim`. It's
-the same groundwork online multiplayer needs (MULTIPLAYER.md), and worth
-doing for either.
+**Browsers.** ECMAScript lets each engine compute `Math.sin`, `cos`,
+`atan2`, `hypot` and `pow` its own way, and they do differ: on 20,000 sample
+inputs V8 (Node, Chrome, Edge) and JavaScriptCore (Safari, Bun) disagreed in
+the last bit for 35% of `hypot` results, 17% of `atan2`, 9% of `pow` and 3% of
+`sin` and `cos` (only `Math.sqrt` always agreed). The sim called them about
+100 times, so a battle recorded in Node drifted in Safari within 10–20
+seconds ("⚠ This replay diverged at 0:10"). AI-vs-AI matches on all six
+maps, run in Node and in Bun, differed from tick 100 or 200, and two of the
+six ended with different winners.
+
+**Fixed**: `src/sim/fmath.ts` has its own `hypot`, `sin`, `cos`, `atan2` and
+`pow`, built from `+ − × ÷`, `Math.sqrt`, `floor` and `abs` only (which IEEE
+754 and ECMAScript define exactly) along fdlibm's lines, within an ulp or so
+of `Math`. Every module under `src/sim` uses them; `tests/fmath.test.ts` bans
+the originals (and `**`) there and pins a digest of 250,000 results that Node
+and Bun both produce. The same six AI-vs-AI matches now give identical hash
+trails in Node and in Bun. Map terrain didn't change. It's the same
+groundwork online multiplayer needs (MULTIPLAYER.md).
 
 **Video.** Later, `tools/arena.ts video <record>` can drive the viewer with
 Playwright and record an MP4 for sharing.
@@ -886,6 +906,12 @@ Where the build differs from, or adds to, the text above:
   "You are blue. Call briefing, then play rounds until the battle is over."
 
 ## First battles
+
+(All three records were later brought up to the deterministic sim with
+`tools/arena.ts upgrade`. The first still ends at 4:31, 0.2 s later; in the
+other two the same side wins, but the re-simulated final assault lands later:
+7:52 instead of 6:23, and 7:50 instead of 4:45. What follows describes the
+battles as played; `battles/showcase/README.md` has both endings.)
 
 **GPT-6 Luna vs GPT-6 Luna, Riverlands, seed 42** (default reasoning effort
 and budgets). Both took Industry, raced to a Tech Lab and fought over the

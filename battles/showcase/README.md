@@ -10,11 +10,19 @@ npx vite-node tools/arena.ts watch battles/showcase/<file>.json    # open it in 
 npx vite-node tools/arena.ts stats battles/showcase/*.json --detail
 ```
 
-| Record | Blue | Red | Result |
-|---|---|---|---|
-| `2026-10-11-riverlands-42-gpt-6-luna-vs-gpt-6-luna.json` | GPT-6 Luna (Industry) | GPT-6 Luna (Industry) | blue wins at 4:31 |
-| `2026-10-11-dune-sea-7-gpt-6-luna-vs-gpt-6-luna.json` | GPT-6 Luna (Blitz) | GPT-6 Luna (Industry) | blue wins at 6:23 |
-| `2026-10-11-riverlands-42-gpt-6-luna-vs-gpt-6-astra.json` | GPT-6 Luna (Industry) | GPT-6 Astra (Industry) | red wins at 4:45 |
+| Record | Blue | Red | As played | Now (re-simulated) |
+|---|---|---|---|---|
+| `2026-10-11-riverlands-42-gpt-6-luna-vs-gpt-6-luna.json` | GPT-6 Luna (Industry) | GPT-6 Luna (Industry) | blue wins at 4:31 | blue wins at 4:31 |
+| `2026-10-11-dune-sea-7-gpt-6-luna-vs-gpt-6-luna.json` | GPT-6 Luna (Blitz) | GPT-6 Luna (Industry) | blue wins at 6:23 | blue wins at 7:52 |
+| `2026-10-11-riverlands-42-gpt-6-luna-vs-gpt-6-astra.json` | GPT-6 Luna (Industry) | GPT-6 Astra (Industry) | red wins at 4:45 | red wins at 7:50 |
+
+They were played on the sim before `src/sim/fmath.ts` made it give the same
+results in every browser engine, and brought up to date with
+`npx vite-node tools/arena.ts upgrade battles/showcase/*.json`: the same
+commands, re-simulated. The models chose those commands against the old
+world, so the re-simulated battles drift a little; in two of them the final
+assault lands later, on the standing orders. The viewer shows the ending as
+played when it differs, and each record keeps it under `upgraded`.
 
 The first was played before unit ids were written `"#97"` in the order
 reference, so many of its orders were refused. The third was played with
