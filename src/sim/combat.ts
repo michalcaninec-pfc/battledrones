@@ -1,3 +1,4 @@
+import { USELESS, effectivenessVs } from "./ai/intel";
 import { BUILDINGS, COMBAT, DAMAGE_VS, INFANTRY, OBJECTIVES, TERRAIN, TICK_RATE, UNITS, shotDamage, type ArmedStats } from "./balance";
 import { concealedFrom, isInfantry, squadFirepower } from "./infantry";
 import { IGNORE_TICKS, moveUnitToward } from "./movement";
@@ -487,7 +488,39 @@ function retaliate(w: World, incidents: Incident[]): void {
       u.order = { type: "attack", targetId: attackerId };
       u.path = null;
     }
+    if (vb?.kind === "hq") defendHq(w, vb, attackerId);
   }
+}
+
+/**
+ * Whoever shoots an HQ gets an answer from anywhere on the map. Retaliation
+ * reaches only idle units beside the HQ and near the shooter, and a Mortar at
+ * full range outreaches all of them. So unless a unit that can hurt the
+ * attacker (USELESS, as the AI judges a counter) is already on it, the
+ * nearest idle one that can also get within range of it goes, however far
+ * away: one responder per attacker. Never a unit with orders, one already
+ * shooting something in range, or a squad crewing an island relay; and
+ * nothing chases a Barrage or Sky Hammer (credited to the enemy HQ).
+ */
+function defendHq(w: World, hq: Building, attackerId: number): void {
+  const attacker = w.units.get(attackerId);
+  if (!attacker || attacker.faction === hq.faction) return;
+  const { armor, domain } = UNITS[attacker.kind];
+  const candidates: { u: Unit; d: number }[] = [];
+  for (const u of w.units.values()) {
+    if (u.faction !== hq.faction || effectivenessVs(u.kind, armor, domain) < USELESS) continue;
+    if ((u.order.type === "attack" && u.order.targetId === attackerId) || u.autoTargetId === attackerId) return;
+    if (u.order.type !== "idle") continue;
+    if (u.autoTargetId !== null && distTo(w, u.autoTargetId, u.x, u.y) <= UNITS[u.kind].range) continue;
+    if (crewing(w, u)) continue;
+    candidates.push({ u, d: Math.hypot(u.x - attacker.x, u.y - attacker.y) });
+  }
+  candidates.sort((a, b) => a.d - b.d);
+  // (nearest first; engageable is the costly test, so only until one passes)
+  const pick = candidates.find(({ u, d }) => d <= UNITS[u.kind].range || engageable(w, u, attackerId));
+  if (!pick) return;
+  pick.u.order = { type: "attack", targetId: attackerId };
+  pick.u.path = null;
 }
 
 /** XP needed for each rank, as a multiple of the unit's own cost. */

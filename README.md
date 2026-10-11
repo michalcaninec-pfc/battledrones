@@ -60,7 +60,8 @@ and offers an Update button.
   that loses its last Condor gets a free one flown in 45 s later. Tap an
   island with a loaded Condor selected to drop its troops.
 - Armor classes and damage types, dodgeable artillery shells and bombs,
-  splash damage, veterancy, retaliation AI for idle units.
+  splash damage, veterancy, retaliation AI for idle units, and an
+  HQ under fire calls the nearest idle unit that can hurt the attacker.
 - An AI commander with **6 personalities** (Balanced, Rush, Air Swarm,
   Boom, Skyforce, Ironclad) and **3 difficulties**, playing by the same
   rules and fog of war as you — it gathers real waves, fights for the

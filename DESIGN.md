@@ -480,6 +480,17 @@ and loses hard to Rocket Squads.
   or focus-fire on a phone. The duel matrix keeps the counter web below.
 - **Retaliation.** Idle units hit by something out of reach go after the
   attacker, and nearby idle allies join in.
+- **HQ defence.** A unit shooting an HQ draws the nearest idle unit that can
+  hurt it, from anywhere on the map (`defendHq` in `combat.ts`). Plain
+  retaliation only reaches idle units within 5 tiles of the HQ and 9 of the
+  shooter, and a Mortar at full range sits 9½ from the HQ's centre: one
+  Mortar could shell an HQ to death in about 2:10 while a Stinger idled 3
+  tiles from it. One responder per attacker (a unit that can hurt it already on
+  it counts, so the rest of the idle army stays put); "can hurt" is the AI's
+  USELESS test (no Sniper Team sent at a Titan), and it must be able to get
+  within range (no tank on an island). Units with orders, units already
+  shooting something in range and squads crewing an island relay are never
+  pulled, and calldowns (credited to the enemy HQ) draw nobody.
 - Auto-acquire targets in range; attack-move is the default command, with
   a "Move only" chip for retreats.
 - **Menders are shot first.** Auto-targeting (units and turrets alike)
