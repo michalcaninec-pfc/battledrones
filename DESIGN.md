@@ -497,7 +497,8 @@ and loses hard to Rocket Squads.
   (credited to the enemy HQ) draw nobody. AI vs AI
   (`tools/pacing.ts`, 2 seeds, 360 matches, before → after): draws 2% → 1%,
   decided median 11:39 → 11:10, the 4:00 leader won 74% → 77%, and every
-  personality's win rate moved 3 points or less, all within the panel's noise.
+  personality's win rate moved 3 points or less, all within the panel's noise;
+  the leash moved none of these by more than a point.
 - Auto-acquire targets in range; attack-move is the default command, with
   a "Move only" chip for retreats.
 - **Menders are shot first.** Auto-targeting (units and turrets alike)
