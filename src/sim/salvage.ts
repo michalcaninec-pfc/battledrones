@@ -3,6 +3,7 @@ import { isInfantry } from "./infantry";
 import type { Faction, Unit, World, Wreck } from "./types";
 import { incomeOf } from "./rules";
 import { buildingAtTile, groundPassable } from "./world";
+import { hypot } from "./fmath";
 
 /**
  * Battlefield salvage. A destroyed combat unit leaves a burning wreck worth
@@ -55,7 +56,7 @@ export function wreckRestingSpot(w: World, x: number, y: number): { x: number; y
       // nearest point of that tile, kept off its very edge
       const cx = Math.max(nx + 0.2, Math.min(nx + 0.8, x));
       const cy = Math.max(ny + 0.2, Math.min(ny + 0.8, y));
-      const d = Math.hypot(cx - x, cy - y);
+      const d = hypot(cx - x, cy - y);
       if (d > R || d >= bestD) continue;
       bestD = d;
       best = { x: cx, y: cy };
@@ -131,7 +132,7 @@ export function tickSalvage(w: World): void {
       if (dx > reach || dx < -reach) continue;
       const dy = u.y - r.y;
       if (dy > reach || dy < -reach) continue;
-      const d = Math.hypot(dx, dy);
+      const d = hypot(dx, dy);
       if (d <= bestD && (best === null || d < bestD)) {
         best = u;
         bestD = d;

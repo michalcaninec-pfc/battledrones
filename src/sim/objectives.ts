@@ -3,6 +3,7 @@ import { isInfantry } from "./infantry";
 import { worldPick, worldRandom } from "./rand";
 import type { Crate, CrateReward, Faction, ObjectiveState, Unit, UnitKind, Uplink, World } from "./types";
 import { buildingAtTile, inBounds, passable, spawnUnit } from "./world";
+import { hypot } from "./fmath";
 
 /**
  * Map objectives: reasons to fight in the middle of the map.
@@ -62,7 +63,7 @@ export type UplinkDef =
 export function setupObjectives(w: World, uplinks: readonly UplinkDef[], dropSites: [number, number][]): void {
   const o = w.objectives;
   const add = (x: number, y: number, extra: Partial<Uplink>) => {
-    if (o.uplinks.some((l) => Math.hypot(l.x - x, l.y - y) < 0.01)) return;
+    if (o.uplinks.some((l) => hypot(l.x - x, l.y - y) < 0.01)) return;
     o.uplinks.push({ id: w.nextId++, x, y, owner: null, progress: 0, pushing: null, contested: false, ...extra });
   };
   for (const def of uplinks) {
@@ -232,7 +233,7 @@ export function crateSpot(w: World, x: number, y: number, mirrored = false): { x
       const dy = i * s;
       const dx = j * s;
       if (!ok(tx + dx, ty + dy)) continue;
-      const d = Math.hypot(dx, dy);
+      const d = hypot(dx, dy);
       if (d < bestD) {
         bestD = d;
         best = { x: tx + dx + 0.5, y: ty + dy + 0.5 };
@@ -292,7 +293,7 @@ function tickCrates(w: World): void {
       if (dx > reach || dx < -reach) continue;
       const dy = u.y - c.y;
       if (dy > reach || dy < -reach) continue;
-      const d = Math.hypot(dx, dy);
+      const d = hypot(dx, dy);
       // nearest wins; ties go to the earliest-built (Map order + strict <)
       if (d <= bestD && (best === null || d < bestD)) {
         best = u;
@@ -314,7 +315,7 @@ export function claimCrate(w: World, c: Crate, faction: Faction, collectorId: nu
   let unused = 0;
   const unitIds: number[] = [];
   const near = (r: number) =>
-    [...w.units.values()].filter((u) => u.faction === faction && Math.hypot(u.x - c.x, u.y - c.y) <= r);
+    [...w.units.values()].filter((u) => u.faction === faction && hypot(u.x - c.x, u.y - c.y) <= r);
   switch (c.reward) {
     case "scrap":
       amount = D.scrap * f.incomeMult;
@@ -387,7 +388,7 @@ export function blocksObjective(w: World, tx: number, ty: number, size: number):
   const o = w.objectives;
   if (o.uplinks.length === 0 && o.crates.length === 0) return false;
   const gap = (x: number, y: number) =>
-    Math.hypot(Math.max(tx - x, 0, x - (tx + size)), Math.max(ty - y, 0, y - (ty + size)));
+    hypot(Math.max(tx - x, 0, x - (tx + size)), Math.max(ty - y, 0, y - (ty + size)));
   for (const l of o.uplinks) if (gap(l.x, l.y) < PAD_RADIUS) return true;
   for (const c of o.crates) if (gap(c.x, c.y) < 0.5) return true;
   return false;

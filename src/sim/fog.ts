@@ -51,9 +51,12 @@ function stamp(w: World, vis: Uint8Array, cx: number, cy: number, radius: number
   const y0 = Math.max(0, Math.floor(cy - radius));
   const y1 = Math.min(w.height - 1, Math.ceil(cy + radius));
   for (let ty = y0; ty <= y1; ty++)
-    for (let tx = x0; tx <= x1; tx++)
-      if ((tx + 0.5 - cx) ** 2 + (ty + 0.5 - cy) ** 2 <= r2)
-        vis[ty * w.width + tx] = Vis.Visible;
+    for (let tx = x0; tx <= x1; tx++) {
+      // (products, not `** 2`: the exponent operator is as loosely specified as Math.pow, fmath.ts)
+      const dx = tx + 0.5 - cx;
+      const dy = ty + 0.5 - cy;
+      if (dx * dx + dy * dy <= r2) vis[ty * w.width + tx] = Vis.Visible;
+    }
 }
 
 function footprintVisible(w: World, f: Faction, b: { kind: BuildingKind; tx: number; ty: number }): boolean {

@@ -5,6 +5,7 @@ import { worldRandom } from "./rand";
 import { applySpawnRank, bannedBy, rulesOf } from "./rules";
 import type { Calldown, Command, Faction, PowerKind, PowerState, UnitKind, World } from "./types";
 import { distToBuilding, hasBuilding, hqOf, inBounds, moveClassOf, onHomeLand, passable, regionAt, spawnUnit } from "./world";
+import { atan2, cos, hypot, sin } from "./fmath";
 
 /**
  * Commander calldowns. Each side has a Command meter (0–100) that fills
@@ -154,8 +155,8 @@ export function applyCalldown(w: World, c: Extract<Command, { type: "calldown" }
       const a = worldRandom(w, "barrage", id, i, 0) * Math.PI * 2;
       const r = b.scatter * Math.sqrt(worldRandom(w, "barrage", id, i, 1));
       cd.shells.push({
-        x: Math.min(w.width - 0.01, Math.max(0, c.x + Math.sin(a) * r)),
-        y: Math.min(w.height - 0.01, Math.max(0, c.y - Math.cos(a) * r)),
+        x: Math.min(w.width - 0.01, Math.max(0, c.x + sin(a) * r)),
+        y: Math.min(w.height - 0.01, Math.max(0, c.y - cos(a) * r)),
         tick: landTick + i * ticks(b.shellGap)
       });
     }
@@ -228,7 +229,7 @@ function landEmp(w: World, c: Calldown): void {
   const victim = enemyOf(c.faction);
   const ids: number[] = [];
   for (const u of w.units.values())
-    if (u.faction === victim && Math.hypot(u.x - c.x, u.y - c.y) <= r) ids.push(u.id);
+    if (u.faction === victim && hypot(u.x - c.x, u.y - c.y) <= r) ids.push(u.id);
   for (const b of w.buildings.values())
     if (b.faction === victim && distToBuilding(b, c.x, c.y) <= r) ids.push(b.id);
   for (const id of ids) w.powers.stunned.set(id, Math.max(until, w.powers.stunned.get(id) ?? 0));
@@ -272,7 +273,7 @@ function landPod(w: World, c: Calldown): void {
     if (!spot) return;
     const u = spawnUnit(w, kind, c.faction, spot.x, spot.y);
     applySpawnRank(w, u); // the Veterans mutator ranks pod crews too
-    u.facing = u.aim = Math.atan2(spot.x - c.x, -(spot.y - c.y)) || u.facing;
+    u.facing = u.aim = atan2(spot.x - c.x, -(spot.y - c.y)) || u.facing;
     ids.push(u.id);
   });
   impact(w, c, c.x, c.y, hits, ids);
@@ -287,8 +288,8 @@ function podSpot(w: World, kind: UnitKind, x: number, y: number, i: number, n: n
   // the crew ring (and the tile search below) in the side's own frame: red's is blue's turned 180°
   const a = (i / n) * Math.PI * 2 + 0.4 + (flip ? Math.PI : 0);
   const s = flip ? -1 : 1;
-  const px = x + Math.sin(a) * 0.65;
-  const py = y - Math.cos(a) * 0.65;
+  const px = x + sin(a) * 0.65;
+  const py = y - cos(a) * 0.65;
   // crew step out onto the pod's own landmass, never across water onto an island
   const land = regionAt(w, Math.floor(x), Math.floor(y), "ground");
   if (passable(w, Math.floor(px), Math.floor(py), mc) && regionAt(w, Math.floor(px), Math.floor(py), "ground") === land)
@@ -304,7 +305,7 @@ function podSpot(w: World, kind: UnitKind, x: number, y: number, i: number, n: n
         const tx = Math.floor(px) + dx;
         const ty = Math.floor(py) + dy;
         if (!passable(w, tx, ty, mc) || regionAt(w, tx, ty, "ground") !== land) continue;
-        const d = Math.hypot(tx + 0.5 - px, ty + 0.5 - py);
+        const d = hypot(tx + 0.5 - px, ty + 0.5 - py);
         if (d < bestD) {
           bestD = d;
           best = { x: tx + 0.5, y: ty + 0.5 };
@@ -321,7 +322,7 @@ function landHammer(w: World, c: Calldown): void {
   const hits: { id: number; damage: number }[] = [];
   for (const u of w.units.values()) {
     if (u.faction !== victim) continue;
-    const d = Math.hypot(u.x - c.x, u.y - c.y);
+    const d = hypot(u.x - c.x, u.y - c.y);
     if (d <= h.radius) hits.push({ id: u.id, damage: h.unitDamage * (1 - 0.5 * (d / h.radius)) });
   }
   for (const b of w.buildings.values())

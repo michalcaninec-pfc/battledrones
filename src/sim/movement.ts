@@ -2,6 +2,7 @@ import { BUILDINGS, TERRAIN, TICK_RATE, UNITS } from "./balance";
 import { crushes, isInfantry, tickCrush } from "./infantry";
 import { Terrain, type Faction, type Unit, type World } from "./types";
 import { inBounds, moveClassOf, passable, regionAt, regionLabels, terrainMult, terrainSpeed, type LandClass, type MoveClass } from "./world";
+import { atan2, cos, hypot, sin } from "./fmath";
 
 const ARRIVE_DIST = 0.25;
 /** How long (ticks) a unit leaves alone a target it found it can't get in range of. */
@@ -20,7 +21,7 @@ function arrivalRadius(w: World, u: Unit, gx: number, gy: number): number {
   let crowd = 0;
   for (const o of w.units.values()) {
     if (o.id === u.id || UNITS[o.kind].domain !== UNITS[u.kind].domain) continue;
-    if (Math.hypot(o.x - gx, o.y - gy) < 0.9) crowd++;
+    if (hypot(o.x - gx, o.y - gy) < 0.9) crowd++;
   }
   return Math.min(2, ARRIVE_DIST + 0.4 * crowd);
 }
@@ -80,7 +81,7 @@ export function findPath(
           const dx = j * s;
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           if (!ok(gx + dx, gy + dy)) continue;
-          const d = Math.hypot(gx + dx - sx, gy + dy - sy);
+          const d = hypot(gx + dx - sx, gy + dy - sy);
           if (d < bestD) {
             bestD = d;
             found = { x: gx + dx, y: gy + dy };
@@ -209,11 +210,11 @@ export function moveUnitToward(w: World, u: Unit, x: number, y: number): boolean
   const mc = moveClassOf(u.kind);
   const speed = unitStepSpeed(w, u);
   if (mc === "air") {
-    const d = Math.hypot(x - u.x, y - u.y);
+    const d = hypot(x - u.x, y - u.y);
     if (d <= Math.max(arrivalRadius(w, u, x, y), speed)) {
       return true;
     }
-    u.facing = Math.atan2(x - u.x, -(y - u.y));
+    u.facing = atan2(x - u.x, -(y - u.y));
     u.x += ((x - u.x) / d) * speed;
     u.y += ((y - u.y) / d) * speed;
     return false;
@@ -223,7 +224,7 @@ export function moveUnitToward(w: World, u: Unit, x: number, y: number): boolean
   if (
     !u.path ||
     !u.pathGoal ||
-    Math.hypot(u.pathGoal.x - x, u.pathGoal.y - y) > 0.6
+    hypot(u.pathGoal.x - x, u.pathGoal.y - y) > 0.6
   ) {
     u.path = findPath(w, u.x, u.y, x, y, mc, u.faction);
     u.pathGoal = { x, y };
@@ -232,7 +233,7 @@ export function moveUnitToward(w: World, u: Unit, x: number, y: number): boolean
   let wp = u.path[0];
   while (wp) {
     const consume = u.path.length > 1 ? WAYPOINT_DIST : arrivalRadius(w, u, wp.x, wp.y);
-    if (Math.hypot(wp.x - u.x, wp.y - u.y) > consume) break;
+    if (hypot(wp.x - u.x, wp.y - u.y) > consume) break;
     u.path.shift();
     wp = u.path[0];
   }
@@ -246,9 +247,9 @@ export function moveUnitToward(w: World, u: Unit, x: number, y: number): boolean
     u.path = null;
     return false;
   }
-  const d = Math.hypot(wp.x - u.x, wp.y - u.y);
+  const d = hypot(wp.x - u.x, wp.y - u.y);
   const step = Math.min(speed, d);
-  u.facing = Math.atan2(wp.x - u.x, -(wp.y - u.y));
+  u.facing = atan2(wp.x - u.x, -(wp.y - u.y));
   u.x += ((wp.x - u.x) / d) * step;
   u.y += ((wp.y - u.y) / d) * step;
   return false;
@@ -305,7 +306,7 @@ export function tickMovement(w: World, pausedIds: Set<number>, spots: Map<number
         continue;
       }
       const minRange = UNITS[u.kind].minRange ?? 0;
-      const d = Math.hypot(p.x - u.x, p.y - u.y);
+      const d = hypot(p.x - u.x, p.y - u.y);
       if (minRange > 0 && d < minRange) {
         // artillery: back off out of minimum range instead of closing in
         const k = (minRange + 0.8) / Math.max(d, 0.01);
@@ -358,7 +359,7 @@ function separate(w: World, driving: Set<number>): void {
       if (Math.abs(dx) > 1.2 || Math.abs(dy) > 1.2) continue;
       const ib = isInfantry(b.kind);
       if (ia !== ib && a.faction !== b.faction) continue; // enemy vehicle and squad: drive through
-      const d = Math.hypot(dx, dy);
+      const d = hypot(dx, dy);
       const minD = Math.max(0.7, UNITS[a.kind].radius + UNITS[b.kind].radius);
       if (d >= minD) continue;
       const push = (minD - d) / 2;
@@ -374,8 +375,8 @@ function separate(w: World, driving: Set<number>): void {
             ? ((KIND_INDEX[a.kind]! * 7 + KIND_INDEX[b.kind]! * 13 + w.tick) % 16) * (Math.PI / 8) +
               (a.faction === "red" ? Math.PI : 0)
             : ((a.id * 7 + b.id * 13) % 16) * (Math.PI / 8);
-        ux = Math.sin(angle);
-        uy = -Math.cos(angle);
+        ux = sin(angle);
+        uy = -cos(angle);
       } else {
         ux = dx / d;
         uy = dy / d;
@@ -401,8 +402,8 @@ function separate(w: World, driving: Set<number>): void {
  * (dx, dy) is the unit vector from the vehicle to the squad.
  */
 function stepAside(v: Unit, dx: number, dy: number): { x: number; y: number } {
-  const fx = Math.sin(v.facing);
-  const fy = -Math.cos(v.facing);
+  const fx = sin(v.facing);
+  const fy = -cos(v.facing);
   if (dx * fx + dy * fy <= 0) return { x: dx, y: dy }; // beside or behind it: just back off
   const rx = -fy; // the vehicle's right hand
   const ry = fx;

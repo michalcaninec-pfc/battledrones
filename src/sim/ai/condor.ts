@@ -8,6 +8,7 @@ import type { Command, Faction, Unit, World } from "../types";
 import { buildingCenter, dist } from "../world";
 import type { AiState } from "./commander";
 import { AA_COVER, aaSources, aaStrengthAt, aaWeight, seenEnemies, type Sighting } from "./intel";
+import { cos, sin } from "../fmath";
 
 /**
  * The commander's Condor drops (INFANTRY.md "AI"): Rush and Balanced keep one
@@ -601,8 +602,8 @@ function planDrop(
     const ux = (c.x - t.x) / d0;
     const uy = (c.y - t.y) / d0;
     for (const a of ANGLES) {
-      const dx = ux * Math.cos(a) - uy * Math.sin(a);
-      const dy = ux * Math.sin(a) + uy * Math.cos(a);
+      const dx = ux * cos(a) - uy * sin(a);
+      const dy = ux * sin(a) + uy * cos(a);
       const drop = inMap(w, { x: t.x + dx * CONDOR_AI.standoff, y: t.y + dy * CONDOR_AI.standoff });
       if (covered(drop.x, drop.y) || guarded(enemies, value, drop)) continue;
       const waypoint = route(w, c, drop, clear);

@@ -7,6 +7,7 @@
 //   npx vite-node tools/arena.ts replay battles/<file>.json
 //   npx vite-node tools/arena.ts stats battles/*.json [--detail]
 //   npx vite-node tools/arena.ts watch battles/<file>.json
+//   npx vite-node tools/arena.ts upgrade battles/<file>.json [...] [--commit <sha>]
 //
 // Seats: `ai:<personality>:<difficulty>` (the built-in commander),
 // `scripted` or `scripted:<file.json>` (a fixed script, for tests), and in
@@ -19,7 +20,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, symlinkSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { Arena, SIDES, parseSeat, type SeatSpec } from "../src/arena/match";
-import { replay, type BattleRecord } from "../src/arena/record";
+import { replay, resimulate, type BattleEnd, type BattleRecord } from "../src/arena/record";
 import { DEFAULT_SCRIPT, playScripted, type Script } from "../src/arena/scripted";
 import { TICK_RATE, UNITS } from "../src/sim/balance";
 import { MAPS } from "../src/sim/maps";
@@ -35,7 +36,7 @@ function arg(name: string, def?: string): string | undefined {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 ? argv[i + 1] : def;
 }
-const FLAGS = ["json", "detail", "keep", "quiet", "here", "follow", "no-records"];
+const FLAGS = ["json", "detail", "keep", "quiet", "here", "follow", "no-records", "force"];
 const flag = (name: string) => argv.includes(`--${name}`);
 /** Arguments that are neither options nor option values. */
 const positional = () => argv.slice(1).filter((a, i, all) => !a.startsWith("--") && !(i > 0 && all[i - 1]!.startsWith("--") && !FLAGS.includes(all[i - 1]!.slice(2))));
@@ -301,7 +302,33 @@ async function watch() {
   await new Promise((ok) => child.on("exit", ok));
 }
 
-const commands: Record<string, () => unknown> = { run, serve, series, replay: replayCmd, stats, watch };
+/**
+ * Bring records played by older sim code up to this one (in place): the same
+ * commands re-simulated, a new hash trail and ending (src/arena/record.ts
+ * resimulate), so they replay exactly in this build of the game, the public
+ * one included. `--commit` names the commit that holds this sim (default:
+ * HEAD); `--force` re-simulates records already on it.
+ */
+function upgrade() {
+  const files = positional();
+  if (!files.length) die("upgrade <record.json> [...] [--commit <sha>] [--force]");
+  const sim = simHash();
+  const commit = arg("commit") ?? gitCommit();
+  const when = (e: BattleEnd | null) => (!e ? "unfinished" : e.winner ? `${e.winner} won at ${clock(e.tick)}` : `${e.reason === "aborted" ? "stopped" : "draw"} at ${clock(e.tick)}`);
+  for (const f of files) {
+    const r = readRecord(f);
+    if (r.sim === sim && !flag("force")) {
+      console.log(`${basename(f)}: already on this sim (${sim})`);
+      continue;
+    }
+    const u = resimulate(r, { commit, sim });
+    writeRecord(f, u);
+    const same = u.end?.winner === r.end?.winner && u.end?.tick === r.end?.tick;
+    console.log(`${basename(f)}: sim ${r.sim ?? "?"} → ${sim}; was: ${when(r.end)}; now: ${when(u.end)}${same ? "" : "  (re-simulated ending differs)"}`);
+  }
+}
+
+const commands: Record<string, () => unknown> = { run, serve, series, replay: replayCmd, stats, watch, upgrade };
 const fn = cmd ? commands[cmd] : undefined;
 if (!fn) die(`usage: npx vite-node tools/arena.ts <${Object.keys(commands).join("|")}> [options]\nsee the header of tools/arena.ts and AGENT-BATTLES.md`);
 await fn();

@@ -12,6 +12,7 @@ import {
   type UnitKind,
   type World
 } from "./types";
+import { hypot } from "./fmath";
 
 const newFaction = (): FactionState => ({
   scrap: ECONOMY.startingScrap,
@@ -172,7 +173,7 @@ export function canGetWithin(
   x: number,
   y: number,
   range: number,
-  dist: (px: number, py: number) => number = (px, py) => Math.hypot(px - x, py - y),
+  dist: (px: number, py: number) => number = (px, py) => hypot(px - x, py - y),
   span = 0
 ): boolean {
   if (mc === "air") return true;
@@ -327,14 +328,14 @@ export function buildingCenter(b: Building): { x: number; y: number } {
 }
 
 export const dist = (ax: number, ay: number, bx: number, by: number): number =>
-  Math.hypot(bx - ax, by - ay);
+  hypot(bx - ax, by - ay);
 
 /** Distance from a point to a building's footprint (0 if inside). */
 export function distToBuilding(b: Building, x: number, y: number): number {
   const size = BUILDINGS[b.kind].size;
   const dx = Math.max(b.tx - x, 0, x - (b.tx + size));
   const dy = Math.max(b.ty - y, 0, y - (b.ty + size));
-  return Math.hypot(dx, dy);
+  return hypot(dx, dy);
 }
 
 export function hqOf(w: World, faction: Faction): Building | null {

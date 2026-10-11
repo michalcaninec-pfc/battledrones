@@ -32,6 +32,7 @@ import {
   onHomeLand
 } from "./world";
 import { applySpawnRank, bannedBy, incomeOf, rulesOf } from "./rules";
+import { atan2, hypot } from "./fmath";
 
 // ---------------------------------------------------------- tech rules ----
 
@@ -185,7 +186,7 @@ export function tickProduction(w: World): void {
     const u = spawnUnit(w, head.kind, b.faction, spot.x, spot.y);
     applySpawnRank(w, u);
     const c = buildingCenter(b);
-    u.facing = u.aim = Math.atan2(spot.x - c.x, -(spot.y - c.y));
+    u.facing = u.aim = atan2(spot.x - c.x, -(spot.y - c.y));
     w.factions[b.faction].stats.unitsBuilt++;
     w.fx.push({ type: "built", faction: b.faction, id: u.id });
     applyRally(w, u, b);
@@ -254,7 +255,7 @@ export function nearestScrapTile(w: World, x: number, y: number, faction?: Facti
     for (let fx = 0; fx < w.width; fx++) {
       const [tx, ty] = fr.tile(fx, fy, 1);
       if (!isResource(w, tileIndex(w, tx, ty))) continue;
-      const d = Math.hypot(fx + 0.5 - p.x, fy + 0.5 - p.y);
+      const d = hypot(fx + 0.5 - p.x, fy + 0.5 - p.y);
       if (d < bestD) {
         bestD = d;
         best = { x: tx, y: ty };
@@ -368,7 +369,7 @@ export function tickHarvest(w: World): void {
       // resolves the jam where several harvesters contest one tile centre
       // and separation steering keeps all but one from ever "arriving"
       const curI = tileIndex(w, Math.floor(u.x), Math.floor(u.y));
-      if (isResource(w, curI) && Math.hypot(Math.floor(u.x) - o.fieldX, Math.floor(u.y) - o.fieldY) < 4) {
+      if (isResource(w, curI) && hypot(Math.floor(u.x) - o.fieldX, Math.floor(u.y) - o.fieldY) < 4) {
         o.fieldX = Math.floor(u.x);
         o.fieldY = Math.floor(u.y);
         o.phase = "harvesting";
@@ -387,7 +388,7 @@ export function tickHarvest(w: World): void {
       if (moveUnitToward(w, u, o.fieldX + 0.5, o.fieldY + 0.5)) {
         // unreachable fields make moveUnitToward "arrive" instantly — only
         // start digging if we're really there
-        if (Math.hypot(o.fieldX + 0.5 - u.x, o.fieldY + 0.5 - u.y) < 2.2) o.phase = "harvesting";
+        if (hypot(o.fieldX + 0.5 - u.x, o.fieldY + 0.5 - u.y) < 2.2) o.phase = "harvesting";
         else {
           // that field is cut off — settle for the nearest one we can reach
           const next = nearestReachableResource(w, u.x, u.y, u.faction);

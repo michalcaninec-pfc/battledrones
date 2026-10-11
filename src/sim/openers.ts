@@ -18,6 +18,7 @@ import {
 } from "./world";
 // type-only: the AI module imports the sim, never the other way round at runtime
 import type { StrategyName } from "./ai/commander";
+import { atan2, hypot } from "./fmath";
 
 /**
  * Quick-start openers. Instead of the classic "HQ + one harvester, now wait"
@@ -235,7 +236,7 @@ type Pt = { x: number; y: number };
 type Frame = SideFrame;
 const frame = sideFrame;
 
-const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
+const dist = (a: Pt, b: Pt) => hypot(a.x - b.x, a.y - b.y);
 
 function toward(from: Pt, to: Pt, d: number): Pt {
   const len = Math.max(1e-6, dist(from, to));
@@ -251,7 +252,7 @@ function nearestResourceInFrame(w: World, fr: Frame, p: Pt): Pt | null {
     for (let fx = 0; fx < w.width; fx++) {
       const [tx, ty] = fr.tile(fx, fy, 1);
       if (!isResource(w, ty * w.width + tx)) continue;
-      const d = Math.hypot(fx + 0.5 - p.x, fy + 0.5 - p.y);
+      const d = hypot(fx + 0.5 - p.x, fy + 0.5 - p.y);
       if (d < bestD) {
         bestD = d;
         best = { x: fx, y: fy };
@@ -266,7 +267,7 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
   const dy = b.y - a.y;
   const L = dx * dx + dy * dy;
   const t = L > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L)) : 0;
-  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+  return hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
 }
 
 /**
@@ -356,7 +357,7 @@ function freeSpot(w: World, fr: Frame, kind: UnitKind, target: Pt, around: Pt): 
     const wp = fr.pt(p);
     let clear = true;
     for (const u of w.units.values())
-      if ((UNITS[u.kind].domain === "air") === (mc === "air") && Math.hypot(u.x - wp.x, u.y - wp.y) < 0.9) {
+      if ((UNITS[u.kind].domain === "air") === (mc === "air") && hypot(u.x - wp.x, u.y - wp.y) < 0.9) {
         clear = false;
         break;
       }
@@ -370,6 +371,6 @@ function spawnFacing(w: World, faction: Faction, kind: UnitKind, fr: Frame, p: P
   const wl = fr.pt(look);
   const u = spawnUnit(w, kind, faction, wp.x, wp.y);
   applySpawnRank(w, u); // the Veterans mutator ranks opener armies too
-  u.facing = u.aim = Math.atan2(wl.x - wp.x, -(wl.y - wp.y));
+  u.facing = u.aim = atan2(wl.x - wp.x, -(wl.y - wp.y));
   return u;
 }

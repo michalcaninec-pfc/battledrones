@@ -3,6 +3,7 @@ import { strikeDamage } from "./combat";
 import { isVisible } from "./fog";
 import { Terrain, type Faction, type Unit, type UnitKind, type World } from "./types";
 import { distToBuilding, terrainAt } from "./world";
+import { hypot } from "./fmath";
 
 /**
  * Robot infantry (INFANTRY.md). A squad is ONE sim unit with one HP pool,
@@ -99,7 +100,7 @@ export function tickCrush(w: World, moved: readonly Unit[]): void {
       if (v.faction === t.faction || v.hp <= 0 || !isInfantry(v.kind)) continue;
       const dx = v.x - t.x;
       const dy = v.y - t.y;
-      if (dx > reach || dx < -reach || dy > reach || dy < -reach || Math.hypot(dx, dy) > reach) continue;
+      if (dx > reach || dx < -reach || dy > reach || dy < -reach || hypot(dx, dy) > reach) continue;
       // first contact (not under this Titan last tick), then every few ticks
       const rolling = v.lastAttackerId === t.id && v.damagedTick >= w.tick - 1;
       if (!rolling || w.tick % CRUSH_FX_EVERY === 0)

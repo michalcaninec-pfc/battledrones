@@ -14,6 +14,7 @@ import {
   spawnUnit,
   type MoveClass
 } from "../world";
+import { atan2, pow } from "../fmath";
 
 /**
  * Last Stand: a survival mode. The red side has no base or economy; a wave
@@ -484,7 +485,7 @@ export function waveSite(w: World, n: number): number {
 }
 
 export function waveBudget(difficulty: SurvivalDifficulty, n: number): number {
-  const base = SURVIVAL.budgetBase + SURVIVAL.budgetGrowth * Math.pow(n, SURVIVAL.budgetExp);
+  const base = SURVIVAL.budgetBase + SURVIVAL.budgetGrowth * pow(n, SURVIVAL.budgetExp);
   return Math.round(base * SURVIVAL.budgetMult[difficulty] * (n % 5 === 0 ? SURVIVAL.bossBudget : 1));
 }
 
@@ -747,7 +748,7 @@ function spawnWaveUnit(w: World, s: SurvivalState, p: PendingSpawn): void {
   const hq = hqOf(w, s.defender);
   if (hq) {
     const c = buildingCenter(hq);
-    u.facing = u.aim = Math.atan2(c.x - x, -(c.y - y));
+    u.facing = u.aim = atan2(c.x - x, -(c.y - y));
   }
   w.factions[attacker(s)].stats.unitsBuilt++;
   s.members.set(u.id, p.wave);

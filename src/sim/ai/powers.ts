@@ -5,6 +5,7 @@ import type { BuildingKind, Calldown, Command, Faction, PowerKind, Unit, World }
 import { dist, hqOf, moveClassOf, passable, regionAt } from "../world";
 import type { AiMode, AiState, Difficulty } from "./commander";
 import { seenEnemies } from "./intel";
+import { cos, hypot, sin } from "../fmath";
 
 /**
  * The commander's use of calldowns (powers.ts), and its reflex for getting
@@ -68,7 +69,7 @@ export function dodgeCalldowns(w: World, faction: Faction, s: AiState): Command[
     const reach = c.radius + 0.7;
     for (const u of w.units.values()) {
       if (u.faction !== faction) continue;
-      const d = Math.hypot(u.x - c.x, u.y - c.y);
+      const d = hypot(u.x - c.x, u.y - c.y);
       if (d > reach) continue;
       // radially out; from dead centre, back toward home
       let dx = u.x - c.x;
@@ -77,7 +78,7 @@ export function dodgeCalldowns(w: World, faction: Faction, s: AiState): Command[
         dx = (hq ? hq.tx + 1.5 : w.width / 2) - c.x;
         dy = (hq ? hq.ty + 1.5 : w.height / 2) - c.y;
       }
-      const len = Math.hypot(dx, dy) || 1;
+      const len = hypot(dx, dy) || 1;
       const { x, y } = dodgeSpot(w, u, dx / len, dy / len);
       cmds.push({ type: "move", faction, unitIds: [u.id], x, y });
       m.dodging.set(u.id, endTick(c) + 5);
@@ -95,8 +96,8 @@ export function dodgeCalldowns(w: World, faction: Faction, s: AiState): Command[
  */
 function dodgeSpot(w: World, u: Unit, ux: number, uy: number): { x: number; y: number } {
   const at = (a: number, d: number) => {
-    const c = Math.cos(a);
-    const s = Math.sin(a);
+    const c = cos(a);
+    const s = sin(a);
     return {
       x: Math.min(w.width - 0.5, Math.max(0.5, u.x + (ux * c - uy * s) * d)),
       y: Math.min(w.height - 0.5, Math.max(0.5, u.y + (ux * s + uy * c) * d))
@@ -148,7 +149,7 @@ function bestClump(
   let best: Clump | null = null;
   const score = (x: number, y: number) => {
     let v = 0;
-    for (const o of units) if (Math.hypot(o.x - x, o.y - y) <= radius) v += weight(o);
+    for (const o of units) if (hypot(o.x - x, o.y - y) <= radius) v += weight(o);
     return v;
   };
   for (const u of units) {
@@ -156,7 +157,7 @@ function bestClump(
     let sy = 0;
     let n = 0;
     for (const o of units)
-      if (Math.hypot(o.x - u.x, o.y - u.y) <= radius) {
+      if (hypot(o.x - u.x, o.y - u.y) <= radius) {
         sx += o.x;
         sy += o.y;
         n++;
@@ -322,14 +323,14 @@ function hammerTarget(w: World, faction: Faction, visibleEnemies: Unit[]): { x: 
         const size = BUILDINGS[k.kind].size;
         const dx = Math.max(k.tx - x, 0, x - (k.tx + size));
         const dy = Math.max(k.ty - y, 0, y - (k.ty + size));
-        if (Math.hypot(dx, dy) > R - 0.2) continue;
+        if (hypot(dx, dy) > R - 0.2) continue;
         v += PRODUCTION.includes(k.kind) ? 1.5 : k.kind === "hq" ? 1.2 : 1;
       }
       // must still catch the production building we aimed for
       const size = BUILDINGS[kb.kind].size;
       const ddx = Math.max(kb.tx - x, 0, x - (kb.tx + size));
       const ddy = Math.max(kb.ty - y, 0, y - (kb.ty + size));
-      if (Math.hypot(ddx, ddy) > R - 0.2) continue;
+      if (hypot(ddx, ddy) > R - 0.2) continue;
       if (!best || v > best.v) best = { x, y, v };
     }
   }

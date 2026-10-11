@@ -8,6 +8,7 @@ import { applyMutators, applySpawnRank, bannedBy, makeRules, rulesOf, type Mutat
 import { setupOp } from "./ops";
 import { dropPoint, stowAboard } from "./transport";
 import { setupLifeline } from "./lifeline";
+import { hypot } from "./fmath";
 
 /**
  * Skirmish maps, in map-picker order (the classic Proving Grounds first, to
@@ -119,7 +120,7 @@ export class Painter {
     const R = Math.ceil(r * (1 + wobble) + 1);
     for (let ty = Math.floor(cy - R); ty <= cy + R; ty++)
       for (let tx = Math.floor(cx - R); tx <= cx + R; tx++) {
-        const d = Math.hypot(tx + 0.5 - cx, ty + 0.5 - cy);
+        const d = hypot(tx + 0.5 - cx, ty + 0.5 - cy);
         if (d <= r * (1 + wobble * 2 * this.n(tx, ty))) this.set(tx, ty, t, only);
       }
   }
@@ -129,7 +130,7 @@ export class Painter {
     for (let i = 0; i < pts.length - 1; i++) {
       const [x0, y0] = pts[i]!;
       const [x1, y1] = pts[i + 1]!;
-      const len = Math.hypot(x1 - x0, y1 - y0);
+      const len = hypot(x1 - x0, y1 - y0);
       const steps = Math.ceil(len * 3);
       for (let s = 0; s <= steps; s++) {
         const x = x0 + ((x1 - x0) * s) / steps;
@@ -138,7 +139,7 @@ export class Painter {
         const R = Math.ceil(r + 1);
         for (let ty = Math.floor(y - R); ty <= y + R; ty++)
           for (let tx = Math.floor(x - R); tx <= x + R; tx++)
-            if (Math.hypot(tx + 0.5 - x, ty + 0.5 - y) <= r) this.set(tx, ty, t, only);
+            if (hypot(tx + 0.5 - x, ty + 0.5 - y) <= r) this.set(tx, ty, t, only);
       }
     }
   }
@@ -376,7 +377,7 @@ export const MAPS: MapDef[] = [
           // and coves, fading out short of the necks so they keep their shape
           const gulf =
             40 -
-            Math.hypot(x - 8, y - 8) +
+            hypot(x - 8, y - 8) +
             (valueNoise(x * 0.06, y * 0.06, p.seed + 12) - 0.5) * 10 +
             rag -
             Math.max(0, 28 - dv) * 1.5;
@@ -576,7 +577,7 @@ function clearBase(w: World, def: MapDef): void {
   const keep = new Set<Terrain>([Terrain.Road, Terrain.Scrap, Terrain.Crystal]);
   for (let ty = 0; ty < w.height; ty++)
     for (let tx = 0; tx < w.width; tx++) {
-      const d = Math.hypot(tx + 0.5 - cx, ty + 0.5 - cy);
+      const d = hypot(tx + 0.5 - cx, ty + 0.5 - cy);
       if (d > 5.2) continue;
       for (const [x, y] of [
         [tx, ty],

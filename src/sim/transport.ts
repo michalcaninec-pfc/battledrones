@@ -4,6 +4,7 @@ import { moveUnitToward } from "./movement";
 import { isStunned } from "./powers";
 import type { Command, Faction, Unit, UnitOrder, World } from "./types";
 import { inBounds, passable, sideFrame, type SideFrame } from "./world";
+import { cos, hypot, sin } from "./fmath";
 
 /**
  * The Condor dropship (INFANTRY.md). Infantry squads BOARD it — walk up, and
@@ -93,7 +94,7 @@ function isClear(ok: StandOk, x: number, y: number): boolean {
       if ((dx === 0 && dy === 0) || ok(fx + dx, fy + dy)) continue;
       const gx = Math.max(fx + dx - x, 0, x - (fx + dx + 1));
       const gy = Math.max(fy + dy - y, 0, y - (fy + dy + 1));
-      if (Math.hypot(gx, gy) < INFANTRY.dropClear - 1e-9) return false;
+      if (hypot(gx, gy) < INFANTRY.dropClear - 1e-9) return false;
     }
   return true;
 }
@@ -116,7 +117,7 @@ function clearIn(ok: StandOk, fx: number, fy: number, px: number, py: number): {
     if (ok(fx + dx, fy + dy)) continue;
     const cx = fx + (dx > 0 ? 1 : 0);
     const cy = fy + (dy > 0 ? 1 : 0);
-    const d = Math.hypot(x - cx, y - cy);
+    const d = hypot(x - cx, y - cy);
     if (d < c) {
       x = cx + ((x - cx) / d) * c;
       y = cy + ((y - cy) / d) * c;
@@ -148,7 +149,7 @@ function nearestClear(ok: StandOk, p: { x: number; y: number }, span: number, ma
       for (let dx = -r; dx <= r; dx += Math.abs(dy) === r ? 1 : 2 * r) {
         const q = clearIn(ok, fx0 + dx, fy0 + dy, p.x, p.y);
         if (!q) continue;
-        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        const d = hypot(q.x - p.x, q.y - p.y);
         if (d > maxD + 1e-9) continue;
         const nearer = d < bestD - 1e-9;
         const tie = !nearer && d < bestD + 1e-9 && (dy < bdy || (dy === bdy && dx < bdx));
@@ -200,10 +201,10 @@ function seatSpots(w: World, faction: Faction, x: number, y: number, ps: readonl
   const out: { x: number; y: number }[] = [];
   ps.forEach((u, i) => {
     const a0 = (i / ps.length) * Math.PI * 2 + 0.4;
-    const at = (a: number, r: number) => ({ x: p.x + Math.sin(a) * r, y: p.y - Math.cos(a) * r });
+    const at = (a: number, r: number) => ({ x: p.x + sin(a) * r, y: p.y - cos(a) * r });
     // (movement.ts separate: squads part to max(0.7, the two radii))
     const apart = (q: { x: number; y: number }) =>
-      out.every((o, j) => Math.hypot(q.x - o.x, q.y - o.y) >= Math.max(0.7, UNITS[u.kind].radius + UNITS[ps[j]!.kind].radius) - 1e-9);
+      out.every((o, j) => hypot(q.x - o.x, q.y - o.y) >= Math.max(0.7, UNITS[u.kind].radius + UNITS[ps[j]!.kind].radius) - 1e-9);
     let s: { x: number; y: number } | null = null;
     for (const a of SEAT_RINGS.flatMap((r) => SEAT_STEPS.map((k) => at(a0 + (k * Math.PI) / 4, r)))) {
       const q = nearestClear(ok, a, 1, 0.4); // (a spot by the water's edge: just off it)
@@ -302,8 +303,8 @@ function backOff(w: World, c: Unit): UnitOrder {
   const d = INFANTRY.dropBackOff;
   return {
     type: "move",
-    x: Math.min(w.width - 0.5, Math.max(0.5, c.x - Math.sin(c.facing) * d)),
-    y: Math.min(w.height - 0.5, Math.max(0.5, c.y + Math.cos(c.facing) * d))
+    x: Math.min(w.width - 0.5, Math.max(0.5, c.x - sin(c.facing) * d)),
+    y: Math.min(w.height - 0.5, Math.max(0.5, c.y + cos(c.facing) * d))
   };
 }
 
@@ -340,7 +341,7 @@ export function tickTransport(w: World): void {
       continue;
     }
     if (isStunned(w, u.id)) continue; // EMP'd: frozen in place, the clock stops
-    const d = Math.hypot(c.x - u.x, c.y - u.y);
+    const d = hypot(c.x - u.x, c.y - u.y);
     if (d > INFANTRY.boardRange) {
       o.ticks = 0;
       moveUnitToward(w, u, c.x, c.y);
@@ -383,7 +384,7 @@ export function tickTransport(w: World): void {
       let near: Unit | null = null;
       let nearD = Infinity;
       for (const s of boarders.get(c.id) ?? []) {
-        const d = Math.hypot(s.x - c.x, s.y - c.y);
+        const d = hypot(s.x - c.x, s.y - c.y);
         if (d < nearD) {
           nearD = d;
           near = s;

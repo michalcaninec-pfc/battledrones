@@ -79,6 +79,15 @@ export interface BattleRecord {
   tick: number;
   end: BattleEnd | null;
   usage: Partial<Record<Faction, Usage>>;
+  /** Re-simulated on newer sim code (resimulate), oldest first: what it was before each time. */
+  upgraded?: Upgrade[];
+}
+
+/** One re-simulation: the code the record had been played (or last re-simulated) by, and how it ended then. */
+export interface Upgrade {
+  from: { commit: string | null; sim: string | null };
+  end: BattleEnd | null;
+  at: string;
 }
 
 /** The match a record describes, set up as the arena set it up: a skirmish with objectives, both openers dealt, fog drawn. */
@@ -185,4 +194,45 @@ export function replay(r: BattleRecord, opts: { until?: number; onTick?: (w: Wor
     }
   }
   return { world: w, divergedAt, checked };
+}
+
+// --------------------------------------------------------------- upgrade ---
+
+/**
+ * The same battle on this sim code: the record's commands re-run from its
+ * setup, with a new hash trail and ending, so a record from older sim code
+ * replays (exactly, from then on) with this one. The commands were chosen
+ * against the old sim's world, and they are kept as they were: a unit that
+ * died a moment sooner ignores its last order, a building placed on a tile
+ * now in use isn't, so a re-simulated battle can end differently, or later.
+ * If no HQ has fallen by the original ending, it plays on with the standing
+ * orders until one does, or until the battle's time limit (a draw). The
+ * models' notes, orders and radio lines stay as they were played; `upgraded`
+ * keeps what the record said before, its ending included.
+ */
+export function resimulate(r: BattleRecord, code: { commit: string | null; sim: string | null }): BattleRecord {
+  const w = setupWorld(r);
+  const byTick = new Map<number, Command[]>();
+  for (const [tick, , cmds] of r.turns) byTick.set(tick, [...(byTick.get(tick) ?? []), ...cmds]);
+  // (a draw on time stays a draw on time; a finished battle plays on until an HQ falls; an unfinished one as far as it went)
+  const limit = r.end?.reason === "time" ? r.end.tick : r.end ? r.maxTicks : r.tick;
+  const hashes: [number, string][] = [];
+  while (w.tick < limit && !w.winner) {
+    step(w, byTick.get(w.tick) ?? []);
+    if (w.tick % HASH_EVERY === 0) hashes.push([w.tick, worldHash(w)]);
+  }
+  const end: BattleEnd | null = w.winner
+    ? { tick: w.tick, winner: w.winner, reason: "hq" }
+    : r.end
+      ? { tick: w.tick, winner: null, reason: r.end.reason === "aborted" ? "aborted" : "time" }
+      : null;
+  return {
+    ...r,
+    commit: code.commit,
+    sim: code.sim,
+    hashes,
+    tick: w.tick,
+    end,
+    upgraded: [...(r.upgraded ?? []), { from: { commit: r.commit, sim: r.sim }, end: r.end, at: new Date().toISOString() }]
+  };
 }

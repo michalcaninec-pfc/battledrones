@@ -7,6 +7,7 @@ import { bailOut, canBailOut } from "./transport";
 import { Terrain, type ArmorClass, type Building, type Domain, type Faction, type TargetDomain, type Unit, type World } from "./types";
 import { rulesOf } from "./rules";
 import { buildingCenter, canGetWithin, distToBuilding, moveClassOf, removeBuilding, terrainAt } from "./world";
+import { atan2, hypot } from "./fmath";
 
 type Attacker = { unit: Unit } | { building: Building };
 
@@ -46,7 +47,7 @@ export function findTarget(
   const range = shooter ? UNITS[shooter.kind].range : Infinity;
   for (const u of w.units.values()) {
     if (u.faction === faction || !canHit(targets, unitDomain(u))) continue;
-    const d = Math.hypot(u.x - x, u.y - y);
+    const d = hypot(u.x - x, u.y - y);
     if (d > radius || d < minRange) continue;
     if (concealedFrom(w, faction, u)) continue;
     // out of range and out of reach (over the sea, on an island): not ours to chase
@@ -102,7 +103,7 @@ function crewing(w: World, u: Unit): boolean {
   if (!isInfantry(u.kind)) return false;
   const r = OBJECTIVES.uplink.radius;
   for (const l of w.objectives.uplinks)
-    if (l.infantryOnly && (l.owner === u.faction || l.pushing === u.faction) && Math.hypot(u.x - l.x, u.y - l.y) <= r) return true;
+    if (l.infantryOnly && (l.owner === u.faction || l.pushing === u.faction) && hypot(u.x - l.x, u.y - l.y) <= r) return true;
   return false;
 }
 
@@ -122,7 +123,7 @@ function distTo(w: World, id: number, x: number, y: number): number {
   const b = w.buildings.get(id);
   if (b) return distToBuilding(b, x, y);
   const u = w.units.get(id);
-  return u ? Math.hypot(u.x - x, u.y - y) : Infinity;
+  return u ? hypot(u.x - x, u.y - y) : Infinity;
 }
 
 /**
@@ -191,7 +192,7 @@ function splash(
 ): void {
   for (const u of w.units.values()) {
     if (u.faction === faction || !canHit(targets, unitDomain(u))) continue;
-    const d = Math.hypot(u.x - x, u.y - y);
+    const d = hypot(u.x - x, u.y - y);
     if (d > radius) continue;
     applyDamage(w, u.id, damage * (1 - 0.5 * (d / radius)) * damageMult(w, u.id, dmgType), attackerId, incidents);
   }
@@ -243,7 +244,7 @@ function fire(w: World, attacker: Attacker, targetId: number, incidents: Inciden
   if (!t) return;
   const interval = stats.shotInterval ?? COMBAT.shotInterval;
   holder.cooldown = Math.max(1, Math.round(interval * TICK_RATE));
-  const angle = Math.atan2(t.x - src.x, -(t.y - src.y));
+  const angle = atan2(t.x - src.x, -(t.y - src.y));
   holder.firedTick = w.tick;
   if (isUnit) {
     const u = attacker.unit;
@@ -286,7 +287,7 @@ function fire(w: World, attacker: Attacker, targetId: number, incidents: Inciden
 function tickProjectiles(w: World, incidents: Incident[]): void {
   const keep = [];
   for (const p of w.projectiles) {
-    const d = Math.hypot(p.tx - p.x, p.ty - p.y);
+    const d = hypot(p.tx - p.x, p.ty - p.y);
     if (d > p.speed) {
       p.x += ((p.tx - p.x) / d) * p.speed;
       p.y += ((p.ty - p.y) / d) * p.speed;
@@ -307,7 +308,7 @@ function tickHealer(w: World, u: Unit, engaged: Set<number>): void {
   let bestScore = Infinity;
   for (const o of w.units.values()) {
     if (o.faction !== u.faction || o.id === u.id || o.hp >= UNITS[o.kind].hp) continue;
-    const d = Math.hypot(o.x - u.x, o.y - u.y);
+    const d = hypot(o.x - u.x, o.y - u.y);
     if (d > reach) continue;
     const s = d + (o.hp / UNITS[o.kind].hp) * 3;
     if (s < bestScore) {
@@ -335,7 +336,7 @@ function tickHealer(w: World, u: Unit, engaged: Set<number>): void {
     return;
   }
   engaged.add(u.id);
-  u.aim = Math.atan2(best.x - u.x, -(best.y - u.y));
+  u.aim = atan2(best.x - u.x, -(best.y - u.y));
   const amount = (stats.heal ?? 0) / TICK_RATE;
   if (best.unit) {
     const o = w.units.get(best.id)!;
@@ -445,7 +446,7 @@ function healerInRange(u: Unit, healers: Unit[], range: number, minRange: number
   let bestD = range;
   for (const h of healers) {
     if (h.faction === u.faction || !canHit(targets, unitDomain(h))) continue;
-    const d = Math.hypot(h.x - u.x, h.y - u.y);
+    const d = hypot(h.x - u.x, h.y - u.y);
     if (d <= bestD && d >= minRange) {
       bestD = d;
       best = h.id;
@@ -478,12 +479,12 @@ function retaliate(w: World, incidents: Incident[]): void {
       const stats = UNITS[u.kind];
       if (stats.targets === "none" || !canHit(stats.targets, attacker.domain)) continue;
       const self = u.id === victimId;
-      if (!self && Math.hypot(u.x - vx, u.y - vy) > COMBAT.assistRadius) continue;
-      if (Math.hypot(u.x - attacker.x, u.y - attacker.y) > COMBAT.retaliateRange) continue;
+      if (!self && hypot(u.x - vx, u.y - vy) > COMBAT.assistRadius) continue;
+      if (hypot(u.x - attacker.x, u.y - attacker.y) > COMBAT.retaliateRange) continue;
       // already busy with a target in range? keep shooting that instead
       if (u.autoTargetId !== null && distTo(w, u.autoTargetId, u.x, u.y) <= stats.range) continue;
       // a shooter across the water (shore artillery, a dropship's escort) can't be answered here
-      if (Math.hypot(u.x - attacker.x, u.y - attacker.y) > stats.range && !engageable(w, u, attackerId)) continue;
+      if (hypot(u.x - attacker.x, u.y - attacker.y) > stats.range && !engageable(w, u, attackerId)) continue;
       u.order = { type: "attack", targetId: attackerId };
       u.path = null;
     }

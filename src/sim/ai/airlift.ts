@@ -9,6 +9,7 @@ import { canGetWithin, dist, moveClassOf, onHomeLand, regionAt, sideFrame } from
 import type { AiState, Difficulty, StrategyName } from "./commander";
 import { airspace, route } from "./condor";
 import { AA_COVER, USELESS, aaSources, aaStrengthAt, aaWeight, effectiveness, type Sighting } from "./intel";
+import { cos, sin } from "../fmath";
 
 /**
  * The commander's airlift, for maps whose Uplinks sit on islands only robot
@@ -679,7 +680,7 @@ function postSpot(w: World, faction: Faction, it: Island, i: number): P {
   const fr = sideFrame(w, faction);
   const c = fr.pt(l);
   const a = (i - 1) * ((2 * Math.PI) / 5) + 0.6;
-  const p = fr.pt({ x: c.x + Math.sin(a) * 1.1, y: c.y - Math.cos(a) * 1.1 });
+  const p = fr.pt({ x: c.x + sin(a) * 1.1, y: c.y - cos(a) * 1.1 });
   return footRegion(w, p) === it.region ? p : { x: l.x, y: l.y };
 }
 

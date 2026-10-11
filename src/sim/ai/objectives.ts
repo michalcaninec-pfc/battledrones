@@ -5,6 +5,7 @@ import type { Command, Crate, Faction, Unit, Uplink, World } from "../types";
 import { canGetWithin, dist, moveClassOf } from "../world";
 import type { AiMode, AiState } from "./commander";
 import { AA_COVER, aaSources, aaStrengthAt } from "./intel";
+import { hypot } from "../fmath";
 
 /**
  * The commander's play for the map objectives (objectives.ts): it races for
@@ -54,7 +55,7 @@ function memo(s: AiState): Memo {
 }
 
 const inZone = (u: { x: number; y: number }, l: Uplink, slack = 0) =>
-  Math.hypot(u.x - l.x, u.y - l.y) <= OBJECTIVES.uplink.radius + slack;
+  hypot(u.x - l.x, u.y - l.y) <= OBJECTIVES.uplink.radius + slack;
 
 /** Is the bar not yet fully ours? (Then units inside it are busy capturing.) */
 const unfinished = (l: Uplink, f: Faction) => l.progress * (f === "blue" ? 1 : -1) < 100;
@@ -93,7 +94,7 @@ export function objectiveHolds(w: World, faction: Faction, s: AiState): number[]
     }
     for (const id of ids) {
       const u = w.units.get(id);
-      if (u && Math.hypot(u.x - c.x, u.y - c.y) <= 2) out.push(id);
+      if (u && hypot(u.x - c.x, u.y - c.y) <= 2) out.push(id);
     }
   }
   return out;
@@ -121,7 +122,7 @@ function enemyValueNear(w: World, faction: Faction, x: number, y: number, r: num
   for (const u of w.units.values()) {
     if (u.faction === faction || UNITS[u.kind].dps <= 0) continue;
     if (!unitSeenBy(w, faction, u)) continue;
-    if (Math.hypot(u.x - x, u.y - y) <= r) v += UNITS[u.kind].cost;
+    if (hypot(u.x - x, u.y - y) <= r) v += UNITS[u.kind].cost;
   }
   return v;
 }
@@ -207,7 +208,7 @@ export function planObjectives(w: World, faction: Faction, s: AiState, ctx: Obje
       (u) =>
         captureWeight(l, u.kind) > 0 &&
         (inZone(u, l, 1) ||
-          ((u.order.type === "attackMove" || u.order.type === "move") && Math.hypot(u.order.x - l.x, u.order.y - l.y) <= 3))
+          ((u.order.type === "attackMove" || u.order.type === "move") && hypot(u.order.x - l.x, u.order.y - l.y) <= 3))
     );
     const need = Math.max(UPLINK_SQUAD, 1.3 * enemyValueNear(w, faction, l.x, l.y, SCAN_RADIUS));
     if (value(mine) >= need) continue; // already on its way / holding it
@@ -261,9 +262,9 @@ function planCrate(
   const onIt = (m.runners.get(c.id) ?? []).some((id) => {
     const u = w.units.get(id);
     if (!u) return false;
-    if (Math.hypot(u.x - c.x, u.y - c.y) <= 2) return true;
+    if (hypot(u.x - c.x, u.y - c.y) <= 2) return true;
     const o = u.order;
-    return (o.type === "move" || o.type === "attackMove") && Math.hypot(o.x - c.x, o.y - c.y) <= 1;
+    return (o.type === "move" || o.type === "attackMove") && hypot(o.x - c.x, o.y - c.y) <= 1;
   });
   if (onIt) return;
   const secsLeft = (c.expireTick - w.tick) / TICK_RATE;

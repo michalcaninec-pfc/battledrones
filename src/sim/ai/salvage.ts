@@ -3,6 +3,7 @@ import { isVisible, knownBuildings } from "../fog";
 import { unitSeenBy } from "../infantry";
 import type { Building, Command, Faction, Unit, World, Wreck } from "../types";
 import { canGetWithin, distToBuilding, moveClassOf } from "../world";
+import { hypot } from "../fmath";
 
 /**
  * The commander's salvage sweeps (salvage.ts has the rules). It plays by the
@@ -66,16 +67,16 @@ export function planSalvage(w: World, faction: Faction, ctx: SalvageContext): Co
     return st.dps > 0 && st.targets !== "air";
   });
   const safe = (r: Wreck): boolean => {
-    for (const e of enemies) if (Math.hypot(e.x - r.x, e.y - r.y) <= DANGER_RADIUS) return false;
+    for (const e of enemies) if (hypot(e.x - r.x, e.y - r.y) <= DANGER_RADIUS) return false;
     for (const kb of defences) {
       const st = BUILDINGS[kb.kind];
-      const d = Math.hypot(kb.tx + st.size / 2 - r.x, kb.ty + st.size / 2 - r.y) - st.size / 2;
+      const d = hypot(kb.tx + st.size / 2 - r.x, kb.ty + st.size / 2 - r.y) - st.size / 2;
       if (d <= st.range + 2) return false;
     }
     for (const u of ctx.army)
-      if (w.tick - u.damagedTick < CALM_TICKS && Math.hypot(u.x - r.x, u.y - r.y) <= CALM_RADIUS) return false;
+      if (w.tick - u.damagedTick < CALM_TICKS && hypot(u.x - r.x, u.y - r.y) <= CALM_RADIUS) return false;
     for (const h of ctx.harvesters)
-      if (w.tick - h.damagedTick < CALM_TICKS && Math.hypot(h.x - r.x, h.y - r.y) <= CALM_RADIUS) return false;
+      if (w.tick - h.damagedTick < CALM_TICKS && hypot(h.x - r.x, h.y - r.y) <= CALM_RADIUS) return false;
     for (const b of ctx.buildings)
       if (w.tick - b.damagedTick < CALM_TICKS && distToBuilding(b, r.x, r.y) <= CALM_RADIUS) return false;
     return true;
@@ -100,7 +101,7 @@ export function planSalvage(w: World, faction: Faction, ctx: SalvageContext): Co
     let bestD = HARVESTER_DIVERT;
     for (const r of ranked) {
       if (claimed.has(r.id) || !canGetWithin(w, "ground", h.x, h.y, r.x, r.y, SALVAGE.pickupRadius)) continue;
-      const d = Math.hypot(r.x - h.x, r.y - h.y);
+      const d = hypot(r.x - h.x, r.y - h.y);
       if (d < bestD) {
         bestD = d;
         best = r;
@@ -124,7 +125,7 @@ export function planSalvage(w: World, faction: Faction, ctx: SalvageContext): Co
       if (ctx.used.has(u.id)) continue;
       // (a wreck across the water, or on an island: not for this unit)
       if (!canGetWithin(w, moveClassOf(u.kind), u.x, u.y, r.x, r.y, SALVAGE.pickupRadius)) continue;
-      const d = Math.hypot(u.x - r.x, u.y - r.y);
+      const d = hypot(u.x - r.x, u.y - r.y);
       if (d < bestD) {
         bestD = d;
         best = u;

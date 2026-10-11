@@ -8,6 +8,7 @@ import { BUILDINGS, ECONOMY, TERRAIN, UNITS } from "./balance";
 import { canPlaceBuilding } from "./economy";
 import { Terrain, type BuildingKind, type Faction, type World } from "./types";
 import { buildingAtTile, buildingCenter, distToBuilding, inBounds, terrainAt } from "./world";
+import { hypot } from "./fmath";
 
 /** Short names for unbuildable ground, per biome where it differs. */
 function groundName(w: World, t: Terrain): string {
@@ -126,7 +127,7 @@ export function suggestPlacement(
         const key = ty * 4096 + tx;
         if (seen.has(key)) continue;
         seen.add(key);
-        const d = Math.hypot(tx + size / 2 - anchor.x, ty + size / 2 - anchor.y);
+        const d = hypot(tx + size / 2 - anchor.x, ty + size / 2 - anchor.y);
         if (d >= bestScore) continue;
         if (!canPlaceBuilding(w, faction, kind, tx, ty)) continue;
         const score = d + (size > 1 && cramped(w, tx, ty, size) ? 4 : 0);

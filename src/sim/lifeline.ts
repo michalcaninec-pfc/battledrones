@@ -4,6 +4,7 @@ import { applySpawnRank, bannedBy, rulesOf } from "./rules";
 import { stowAboard } from "./transport";
 import type { Faction, Unit, World } from "./types";
 import { hqOf, sideFrame, spawnUnit } from "./world";
+import { atan2 } from "./fmath";
 
 /**
  * The free replacement Condor (the island map: MapDef.lifeline). Its island
@@ -91,7 +92,7 @@ export function tickLifeline(w: World): void {
 function flyIn(w: World, f: Faction, route: NonNullable<ReturnType<typeof lifelineRoute>>): Unit {
   const c = spawnUnit(w, "condor", f, route.from.x, route.from.y);
   c.free = true;
-  c.facing = c.aim = Math.atan2(route.to.x - c.x, -(route.to.y - c.y));
+  c.facing = c.aim = atan2(route.to.x - c.x, -(route.to.y - c.y));
   c.order = { type: "move", x: route.to.x, y: route.to.y };
   if (squadCount(w, f) < LIFELINE.squadUnder && !bannedBy(w, "trooper", f)) {
     const squad = spawnUnit(w, "trooper", f, c.x, c.y);

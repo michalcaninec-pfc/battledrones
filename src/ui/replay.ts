@@ -55,6 +55,7 @@ export function replayPanel(feed: ReplayFeed, scene: GameScene): ReplayPanel {
     </div>
     <div class="rp-status" hidden></div>
     <div class="rp-warn" hidden></div>
+    ${asPlayed(r) ? `<div class="rp-status rp-upgraded">${esc(asPlayed(r)!)}</div>` : ""}
     <div class="rp-warn rp-sim"${otherSim(r) ? "" : " hidden"}>Recorded by other game code (sim ${esc(r.sim ?? "?")}, this game ${esc(BUILD_SIM ?? "?")}): if it drifts, this page says so. <code>tools/arena.ts watch</code> replays it with its own code.</div>
     <div class="rp-notes" hidden><div class="rp-side" data-side="blue"></div><div class="rp-side" data-side="red"></div></div>`;
   document.body.appendChild(root);
@@ -123,6 +124,18 @@ export function replayPanel(feed: ReplayFeed, scene: GameScene): ReplayPanel {
       style.remove();
     }
   };
+}
+
+/**
+ * A record re-simulated on newer game code (tools/arena.ts upgrade) whose
+ * ending moved: what really happened, so the replay isn't taken for it.
+ */
+function asPlayed(r: ReplayFeed["record"]): string | null {
+  const was = r.upgraded?.[0]?.end;
+  const now = r.end;
+  if (!was || (was.winner === now?.winner && was.tick === now?.tick)) return null;
+  const how = was.winner ? `${was.winner} won at ${clock(was.tick)}` : `it was a draw at ${clock(was.tick)}`;
+  return `Re-simulated on newer game code, so the ending differs: as played, ${how}`;
 }
 
 function esc(s: string): string {

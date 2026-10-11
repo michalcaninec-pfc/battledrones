@@ -2,6 +2,7 @@ import { BUILDINGS, DAMAGE_VS, UNITS, type ArmedStats } from "../balance";
 import { knownBuildings } from "../fog";
 import { unitSeenBy } from "../infantry";
 import type { ArmorClass, Domain, Faction, Unit, UnitKind, World } from "../types";
+import { hypot } from "../fmath";
 
 /**
  * What the commander makes of the enemy it can see: who it sees (through
@@ -68,7 +69,7 @@ export function aaSources(w: World, faction: Faction, seen?: readonly Sighting[]
 /** Anti-air (in Flak) covering (x, y): the sum over the sources in reach of it. */
 export function aaStrengthAt(sources: AaSource[], x: number, y: number): number {
   let v = 0;
-  for (const a of sources) if (Math.hypot(a.x - x, a.y - y) < a.reach) v += a.weight;
+  for (const a of sources) if (hypot(a.x - x, a.y - y) < a.reach) v += a.weight;
   return v;
 }
 

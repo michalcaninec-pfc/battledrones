@@ -13,7 +13,7 @@ import { frameOf } from "../src/arena/frame";
 import { Arena, parseSeat } from "../src/arena/match";
 import { look, observeState, renderObservation } from "../src/arena/observe";
 import { parseOrders } from "../src/arena/orders";
-import { replay, worldHash, type BattleRecord } from "../src/arena/record";
+import { replay, resimulate, worldHash, type BattleRecord } from "../src/arena/record";
 import { DEFAULT_SCRIPT, playScripted } from "../src/arena/scripted";
 
 const SIDES: Faction[] = ["blue", "red"];
@@ -362,5 +362,39 @@ describe("a pasted battle record", () => {
     expect(() => parseRecord("{not json")).toThrow(/isn't JSON/);
     expect(() => parseRecord('{"hello": 1}')).toThrow(/isn't a battle record/);
     expect(() => parseRecord(json.replace('"map":"frostbite"', '"map":"atlantis"'))).toThrow(/"atlantis", a map this version of the game doesn't have/);
+  });
+});
+
+describe("upgrading a record to newer sim code", () => {
+  const record = (): BattleRecord => {
+    const a = new Arena({ map: "proving-grounds", seed: 11, seats: { blue: parseSeat("scripted"), red: parseSeat("ai:rush:easy") }, maxTicks: 8 * 600 });
+    while (!a.over) {
+      playScripted(a, "blue", DEFAULT_SCRIPT);
+      a.advance();
+    }
+    return JSON.parse(JSON.stringify(a.record)) as BattleRecord;
+  };
+
+  it("re-simulates the commands: a new hash trail that replays, the old one kept in the history", () => {
+    const r = record();
+    // as if older sim code had played it: a different hash trail
+    const old: BattleRecord = { ...r, sim: "0ld", commit: "abc", hashes: r.hashes.map(([t]) => [t, "deadbeef"]) };
+    expect(replay(old).divergedAt).toBe(100);
+    const u = resimulate(old, { commit: "def", sim: "n3w" });
+    expect(u.hashes).toEqual(r.hashes);
+    expect(u.end).toEqual(r.end);
+    expect(replay(u).divergedAt).toBeNull();
+    expect(u).toMatchObject({ sim: "n3w", commit: "def", turns: r.turns, log: r.log, radio: r.radio });
+    expect(u.upgraded).toEqual([{ from: { commit: "abc", sim: "0ld" }, end: r.end, at: expect.any(String) }]);
+  });
+
+  it("plays on with the standing orders when no HQ has fallen by the old ending", () => {
+    const r = record();
+    expect(r.end?.reason).toBe("hq");
+    // an old ending a minute earlier than this sim gets there
+    const early: BattleRecord = { ...r, end: { ...r.end!, tick: r.end!.tick - 600 } };
+    const u = resimulate(early, { commit: null, sim: "n3w" });
+    expect(u.end).toEqual(r.end);
+    expect(u.upgraded![0]!.end).toEqual(early.end);
   });
 });
