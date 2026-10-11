@@ -84,7 +84,11 @@ export type UnitOrder =
   | { type: "idle" }
   | { type: "move"; x: number; y: number }
   | { type: "attackMove"; x: number; y: number }
-  | { type: "attack"; targetId: number }
+  /**
+   * `defending`: called to this HQ's defence (combat.ts defendHq), so the
+   * chase ends once the target is COMBAT.hqLeash from it.
+   */
+  | { type: "attack"; targetId: number; defending?: number }
   | { type: "harvest"; fieldX: number; fieldY: number; phase: HarvestPhase }
   /**
    * Infantry: walk to Condor `carrierId` and climb aboard (transport.ts).

@@ -488,9 +488,13 @@ and loses hard to Rocket Squads.
   tiles from it. One responder per attacker (a unit that can hurt it already on
   it counts, so the rest of the idle army stays put); "can hurt" is the AI's
   USELESS test (no Sniper Team sent at a Titan), and it must be able to get
-  within range (no tank on an island). Units with orders, units already
-  shooting something in range and squads crewing an island relay are never
-  pulled, and calldowns (credited to the enemy HQ) draw nobody. AI vs AI
+  within range (no tank on an island). It sees the attacker off but doesn't
+  chase it home: once the target is 12 tiles from the HQ's footprint
+  (`COMBAT.hqLeash`; a Mortar fires from 8) the responder stands down where it
+  is, and a player's own attack order on the same target still chases it
+  anywhere. Units with orders, units already shooting something in range
+  and squads crewing an island relay are never pulled, and calldowns
+  (credited to the enemy HQ) draw nobody. AI vs AI
   (`tools/pacing.ts`, 2 seeds, 360 matches, before → after): draws 2% → 1%,
   decided median 11:39 → 11:10, the 4:00 leader won 74% → 77%, and every
   personality's win rate moved 3 points or less, all within the panel's noise.

@@ -331,6 +331,12 @@ export const COMBAT = {
   /** Idle allies this close to a victim join in its defence. */
   assistRadius: 5,
   /**
+   * A unit called from anywhere to an HQ's defence gives up once its target
+   * is this far from the HQ's footprint (a Mortar, the longest gun, fires on
+   * it from 8): it sees the attacker off, it doesn't follow it home.
+   */
+  hqLeash: 12,
+  /**
    * Auto-targeting reckons an enemy Mender this many tiles closer than it is,
    * and a unit that can hit one drops its current auto-target for a Mender
    * in weapon range: kill the healer first, or the fight never ends.

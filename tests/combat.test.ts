@@ -196,7 +196,7 @@ describe("HQ defence", () => {
     const guard = spawnUnit(w, "stinger", "blue", 15.5, 35.5); // 22 tiles from the Mortar
     const mortar = shell(w, hq, 24.8, 15.5);
     runTicks(w, 5 * TICK_RATE);
-    expect(guard.order).toEqual({ type: "attack", targetId: mortar.id });
+    expect(guard.order).toEqual({ type: "attack", targetId: mortar.id, defending: hq.id });
     runTicks(w, 30 * TICK_RATE);
     expect(w.units.has(mortar.id)).toBe(false);
     expect(hq.hp).toBeGreaterThan(BUILDINGS.hq.hp * 0.7);
@@ -210,8 +210,8 @@ describe("HQ defence", () => {
     const a = shell(w, hq, 24.8, 15.5);
     const b = shell(w, hq, 6.2, 15.5);
     runTicks(w, 6 * TICK_RATE);
-    expect(east.order).toEqual({ type: "attack", targetId: a.id });
-    expect(west.order).toEqual({ type: "attack", targetId: b.id });
+    expect(east.order).toEqual({ type: "attack", targetId: a.id, defending: hq.id });
+    expect(west.order).toEqual({ type: "attack", targetId: b.id, defending: hq.id });
     expect(spare.order).toEqual({ type: "idle" });
   });
 
@@ -225,7 +225,7 @@ describe("HQ defence", () => {
     const flak = spawnUnit(w, "flak-crawler", "blue", 20.5, 24.5); // can't shoot ground
     const guard = spawnUnit(w, "stinger", "blue", 20.5, 33.5);
     runTicks(w, 3 * TICK_RATE);
-    expect(guard.order).toEqual({ type: "attack", targetId: titan.id });
+    expect(guard.order).toEqual({ type: "attack", targetId: titan.id, defending: hq.id });
     expect(busy.order.type).toBe("move");
     expect(sniper.order).toEqual({ type: "idle" });
     expect(flak.order).toEqual({ type: "idle" });
@@ -241,7 +241,24 @@ describe("HQ defence", () => {
     const mortar = shell(w, hq, 24.8, 15.5);
     runTicks(w, 5 * TICK_RATE);
     expect(marooned.order).toEqual({ type: "idle" });
-    expect(guard.order).toEqual({ type: "attack", targetId: mortar.id });
+    expect(guard.order).toEqual({ type: "attack", targetId: mortar.id, defending: hq.id });
+  });
+
+  it("the responder sees the attacker off but doesn't chase it home (COMBAT.hqLeash)", () => {
+    const { w, hq } = setup();
+    const titan = spawnUnit(w, "titan", "blue", 15.5, 35.5); // slower than the Mortar it answers
+    const mortar = shell(w, hq, 24.8, 15.5);
+    runTicks(w, 5 * TICK_RATE);
+    expect(titan.order).toEqual({ type: "attack", targetId: mortar.id, defending: hq.id });
+    step(w, [{ type: "move", faction: "red", unitIds: [mortar.id], x: 38.5, y: 4.5 }]);
+    runTicks(w, 30 * TICK_RATE);
+    expect(w.units.has(mortar.id)).toBe(true);
+    expect(titan.order).toEqual({ type: "idle" });
+    expect(Math.hypot(titan.x - 38.5, titan.y - 4.5)).toBeGreaterThan(12);
+    // a player's own attack order on the same target still chases it anywhere
+    step(w, [{ type: "attack", faction: "blue", unitIds: [titan.id], targetId: mortar.id }]);
+    runTicks(w, 40 * TICK_RATE);
+    expect(w.units.has(mortar.id)).toBe(false);
   });
 
   it("sends nobody at the enemy HQ when a calldown lands on ours", () => {

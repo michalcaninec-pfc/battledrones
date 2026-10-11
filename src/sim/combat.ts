@@ -384,6 +384,8 @@ export function tickCombat(w: World): Set<number> {
         u.order = { type: "idle" }; // gone, out of reach, or vanished into the woods
       } else if (distTo(w, u.order.targetId, u.x, u.y) > stats.range && !engageable(w, u, u.order.targetId)) {
         u.order = { type: "idle" }; // across the water from us: stand down and fight what we can reach
+      } else if (u.order.defending !== undefined && pastLeash(w, u.order.defending, t)) {
+        u.order = { type: "idle" }; // called to the HQ: the attacker has gone, and we don't chase it home
       } else {
         targetId = u.order.targetId;
       }
@@ -498,9 +500,10 @@ function retaliate(w: World, incidents: Incident[]): void {
  * full range outreaches all of them. So unless a unit that can hurt the
  * attacker (USELESS, as the AI judges a counter) is already on it, the
  * nearest idle one that can also get within range of it goes, however far
- * away: one responder per attacker. Never a unit with orders, one already
- * shooting something in range, or a squad crewing an island relay; and
- * nothing chases a Barrage or Sky Hammer (credited to the enemy HQ).
+ * away: one responder per attacker, and it gives up if the attacker leaves
+ * (COMBAT.hqLeash). Never a unit with orders, one already shooting something
+ * in range, or a squad crewing an island relay; and nothing chases a Barrage
+ * or Sky Hammer (credited to the enemy HQ).
  */
 function defendHq(w: World, hq: Building, attackerId: number): void {
   const attacker = w.units.get(attackerId);
@@ -519,8 +522,14 @@ function defendHq(w: World, hq: Building, attackerId: number): void {
   // (nearest first; engageable is the costly test, so only until one passes)
   const pick = candidates.find(({ u, d }) => d <= UNITS[u.kind].range || engageable(w, u, attackerId));
   if (!pick) return;
-  pick.u.order = { type: "attack", targetId: attackerId };
+  pick.u.order = { type: "attack", targetId: attackerId, defending: hq.id };
   pick.u.path = null;
+}
+
+/** Is `t` past the leash (COMBAT.hqLeash) of the HQ we were called to defend, or is that HQ gone? */
+function pastLeash(w: World, hqId: number, t: { x: number; y: number }): boolean {
+  const hq = w.buildings.get(hqId);
+  return !hq || distToBuilding(hq, t.x, t.y) > COMBAT.hqLeash;
 }
 
 /** XP needed for each rank, as a multiple of the unit's own cost. */
