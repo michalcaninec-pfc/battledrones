@@ -398,8 +398,8 @@ export class Terrain3D {
     const zs = this.lines(this.H, size);
     const NX = xs.length;
 
-    // one mesh per painted chunk: its own cells, plus the near-skirt cells past the edges it lies on
-    // (so its bounds grow only by the skirt beside it, and it still culls)
+    // one mesh per painted chunk: its own cells, plus the near-skirt cells that mirror into it
+    // (so its bounds grow only by the skirt nearby, and it still culls)
     interface Acc {
       idx: number[]; pos: number[]; nor: number[]; uv: number[]; col: number[]; stone: number[]; steep: number[];
       tex: THREE.Texture | null; x0: number; z0: number; w: number; h: number;
@@ -459,13 +459,13 @@ export class Terrain3D {
     };
     for (let j = 0; j < zs.length - 1; j++)
       for (let i = 0; i < NX - 1; i++) {
-        // which chunk the cell's (mirrored) source lies in — past an edge, always the chunk on that edge
-        // (where the last chunk is narrower than the near skirt its paint just clamps: by then the
-        // skirt is all open ground anyway)
+        // which chunk the cell's (mirrored) source lies in — past the far edges not always the last
+        // chunk, which can be narrower than the near skirt (a 108-tile map's is 1⅓ tiles wide): its
+        // paint would clamp out there, streaking the skirt
         const mx = (xs[i]! + xs[i + 1]!) / 2;
         const mz = (zs[j]! + zs[j + 1]!) / 2;
-        const c = mx > this.W ? nC - 1 : Math.min(nC - 1, Math.floor(mirror(mx, this.W) / size));
-        const r = mz > this.H ? nR - 1 : Math.min(nR - 1, Math.floor(mirror(mz, this.H) / size));
+        const c = Math.min(nC - 1, Math.floor(mirror(mx, this.W) / size));
+        const r = Math.min(nR - 1, Math.floor(mirror(mz, this.H) / size));
         const ak = r * nC + c;
         const a = accs[ak]!;
         const v00 = vert(a, ak, i, j);
