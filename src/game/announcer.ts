@@ -17,7 +17,7 @@
 import type { Faction, FxEvent, World } from "../sim/types";
 import { onAnnounce, announce, type Announcement, type AnnounceTone } from "./announce";
 import { sfx } from "./audio";
-import { BattleCallouts, RadioQueue, speakable, type RadioCueKey, type RadioLine } from "./callouts";
+import { BattleCallouts, RadioQueue, isEndLine, speakable, type RadioCueKey, type RadioLine } from "./callouts";
 
 /** Speech voice settings. */
 export const SPEECH = {
@@ -338,7 +338,7 @@ export class Announcer {
 
   push(line: RadioLine): void {
     if (this.ended) return;
-    if (line.key === "victory" || line.key === "defeat") {
+    if (isEndLine(line)) {
       // the last word: nothing else waits or talks over it
       this.ended = true;
       this.queue.clear();

@@ -274,7 +274,7 @@ export const defenderPilot: PilotFactory = (w0) => {
     fab: (w, army) => {
       const air = survivalStatus(w)?.nextTheme === "air";
       if (air && army.filter((u) => u.kind === "flak-crawler").length < 4) return "flak-crawler";
-      return army.length % 3 === 0 && !unitBlocker(w, "blue", "titan") ? "titan" : army.length % 3 === 1 && !unitBlocker(w, "blue", "lancer") ? "lancer" : "stinger";
+      return army.length % 3 === 0 && !unitBlocker(w, "blue", "mastodon") ? "mastodon" : army.length % 3 === 1 && !unitBlocker(w, "blue", "lancer") ? "lancer" : "stinger";
     },
     air: (w) => (survivalStatus(w)?.nextTheme === "air" ? "raptor" : "wasp"),
     attackAt: Infinity
@@ -343,7 +343,7 @@ export const PILOTS: Record<string, Record<string, PilotFactory>> = {
       build: [],
       harvesters: 0,
       // the mix alternates by vehicles built so far (the starting Trooper Squad doesn't shift it)
-      fab: (_w, f) => (vehicles(f) % 3 === 0 ? "titan" : "stinger"),
+      fab: (_w, f) => (vehicles(f) % 3 === 0 ? "mastodon" : "stinger"),
       air: (_w, f) => (vehicles(f) % 2 === 0 ? "hornet" : "raptor"),
       hold: () => ({ x: 12, y: 36 }),
       attackAt: 2600,

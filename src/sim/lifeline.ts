@@ -3,6 +3,7 @@ import { isInfantry } from "./infantry";
 import { applySpawnRank, bannedBy, rulesOf } from "./rules";
 import { stowAboard } from "./transport";
 import type { Faction, Unit, World } from "./types";
+import { goliathsOf, hasGoliath, isAnchored } from "./goliath";
 import { hqOf, sideFrame, spawnUnit } from "./world";
 import { atan2 } from "./fmath";
 
@@ -13,6 +14,9 @@ import { atan2 } from "./fmath";
  * on an Airpad's queue — a free one is due LIFELINE.delay s later. It flies
  * in from the map edge nearest the HQ and sets down beside it, carrying a
  * free Trooper Squad if the side is short of infantry (LIFELINE.squadUnder).
+ * A side with no HQ but a Goliath (Nomads, or fighting on after the HQ fell)
+ * is still in the match: its Condor comes to the Goliath (an anchored one
+ * first) instead.
  *
  * Free units (Unit.free) leave no wreck and charge no ⚡ meter when lost, so
  * throwing a Condor away gains nothing: a bought one comes back as a free one
@@ -46,11 +50,15 @@ export function squadCount(w: World, f: Faction): number {
 /** Where a side's replacement Condor appears and where it sets down (world coords). */
 export function lifelineRoute(w: World, f: Faction): { from: { x: number; y: number }; to: { x: number; y: number } } | null {
   const hq = hqOf(w, f);
-  if (!hq) return null;
+  const s = BUILDINGS.hq.size;
+  // (no HQ: its base is its Goliath, the dug-in one first, the oldest of a kind)
+  const gs = hq ? [] : goliathsOf(w, f);
+  const g = gs.find(isAnchored) ?? gs[0];
+  const home = hq ? { x: hq.tx + s / 2, y: hq.ty + s / 2 } : g ? { x: g.x, y: g.y } : null;
+  if (!home) return null;
   // in the side's own frame its HQ sits bottom left, so the two sides' routes mirror
   const fr = sideFrame(w, f);
-  const s = BUILDINGS.hq.size;
-  const c = fr.pt({ x: hq.tx + s / 2, y: hq.ty + s / 2 });
+  const c = fr.pt(home);
   const inset = LIFELINE.edgeInset;
   const edges = [
     { d: c.x, p: { x: inset, y: c.y } },
@@ -71,7 +79,7 @@ export function tickLifeline(w: World): void {
   if (!lines || w.winner || !rulesOf(w).lifeline) return;
   for (const f of FACTIONS) {
     const slot = lines[f];
-    if (!hqOf(w, f) || bannedBy(w, "condor", f) || hasCondor(w, f)) {
+    if ((!hqOf(w, f) && !hasGoliath(w, f)) || bannedBy(w, "condor", f) || hasCondor(w, f)) {
       slot.due = null;
       continue;
     }

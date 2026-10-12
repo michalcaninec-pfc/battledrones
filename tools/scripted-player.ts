@@ -108,7 +108,7 @@ export function scriptedPlayer(p: PlayerProfile): (w: World) => Command[] {
       let kind: UnitKind | null = null;
       if (b.kind === "fab-plant") {
         if (seenAir > 0 && count("flak-crawler") < 1 + Math.ceil(seenAir / 2)) kind = "flak-crawler";
-        else if (!unitBlocker(w, "blue", "titan")) kind = army.length % 3 === 0 ? "titan" : army.length % 3 === 1 ? "lancer" : "stinger";
+        else if (!unitBlocker(w, "blue", "mastodon")) kind = army.length % 3 === 0 ? "mastodon" : army.length % 3 === 1 ? "lancer" : "stinger";
         else kind = "stinger";
       } else if (b.kind === "airpad") kind = seenAir > count("raptor") + count("flak-crawler") ? "raptor" : "wasp";
       if (!kind || unitBlocker(w, "blue", kind) || scrap < UNITS[kind].cost) continue;

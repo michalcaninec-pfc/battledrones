@@ -45,13 +45,13 @@ describe("unit chirp-voices", () => {
     expect(death.crackle).toBeDefined();
     expect(chirpPlan("wasp", "attack", 5).bark).toBeDefined();
     expect(chirpPlan("mender", "rank", 5).sparkle).toHaveLength(2);
-    expect(chirpPlan("titan", "rank", 5).syllables).toHaveLength(4);
-    expect(chirpPlan("titan", "move", 5).syllables.at(-1)!.to).toBeLessThan(chirpPlan("titan", "move", 5).syllables.at(-1)!.from);
+    expect(chirpPlan("mastodon", "rank", 5).syllables).toHaveLength(4);
+    expect(chirpPlan("mastodon", "move", 5).syllables.at(-1)!.to).toBeLessThan(chirpPlan("mastodon", "move", 5).syllables.at(-1)!.from);
   });
 
   it("heavy hulls speak low, drones and menders high", () => {
     const f = (k: UnitKind) => chirpPlan(k, "select", 1).syllables[0]!.from;
-    expect(f("titan")).toBeLessThan(f("stinger"));
+    expect(f("mastodon")).toBeLessThan(f("stinger"));
     expect(f("hornet")).toBeLessThan(f("wasp"));
     expect(f("mender")).toBeGreaterThan(f("harvester"));
   });
@@ -99,12 +99,12 @@ describe("unit chirp-voices", () => {
 
   it("lets the majority kind lead a group, with one echo voice", () => {
     expect(groupVoices([])).toBeNull();
-    expect(groupVoices([{ id: 1, kind: "titan" }])).toEqual({ lead: { kind: "titan", id: 1 }, echo: null });
+    expect(groupVoices([{ id: 1, kind: "mastodon" }])).toEqual({ lead: { kind: "mastodon", id: 1 }, echo: null });
     const mixed = groupVoices([
-      { id: 1, kind: "wasp" }, { id: 2, kind: "titan" }, { id: 3, kind: "wasp" }, { id: 4, kind: "stinger" }, { id: 5, kind: "titan" }, { id: 6, kind: "wasp" }
+      { id: 1, kind: "wasp" }, { id: 2, kind: "mastodon" }, { id: 3, kind: "wasp" }, { id: 4, kind: "stinger" }, { id: 5, kind: "mastodon" }, { id: 6, kind: "wasp" }
     ])!;
     expect(mixed.lead).toEqual({ kind: "wasp", id: 1 });
-    expect(mixed.echo?.kind).toBe("titan");
+    expect(mixed.echo?.kind).toBe("mastodon");
     const trio = groupVoices([{ id: 7, kind: "raptor" }, { id: 8, kind: "raptor" }, { id: 9, kind: "raptor" }])!;
     expect(trio.echo).toEqual({ kind: "raptor", id: 8 });
     expect(groupVoices([{ id: 7, kind: "raptor" }, { id: 8, kind: "raptor" }])!.echo).toBeNull();
@@ -178,7 +178,7 @@ describe("radio queue", () => {
     expect(speakable("SUPPLY DROP INBOUND")).toBe("Supply drop inbound");
     expect(speakable("⚡ ENEMY HQ DESTROYED!")).toBe("Enemy HQ destroyed!");
     expect(speakable("First blood")).toBe("First blood");
-    expect(speakable("Wave 5 — Titans")).toBe("Wave 5 Titans");
+    expect(speakable("Wave 5 — Mastodons")).toBe("Wave 5 Mastodons");
     expect(lineSeconds("Warning: our HQ is under attack")).toBeGreaterThan(1.5);
     expect(lineSeconds("Squad lost")).toBeLessThan(1.2);
   });
@@ -259,10 +259,10 @@ describe("battle callouts", () => {
 
   it("names expensive losses and harvesters lost out of view", () => {
     const r = rig({ onScreen: () => false });
-    r.at(1, death({ faction: "blue", unitKind: "titan", value: 475 }));
+    r.at(1, death({ faction: "blue", unitKind: "mastodon", value: 475 }));
     r.at(30, death({ faction: "blue", unitKind: "harvester", value: 150 }));
     r.at(60, death({ faction: "blue", unitKind: "stinger", value: 150 }));
-    expect(r.radio.map((l) => l.text)).toEqual(["Titan lost", "Harvester lost"]);
+    expect(r.radio.map((l) => l.text)).toEqual(["Mastodon lost", "Harvester lost"]);
   });
 
   it("calls first blood once, for the player's first kill", () => {
@@ -318,8 +318,8 @@ describe("battle callouts", () => {
   it("gives expensive kills their own banner, or a line under a streak", () => {
     const r = rig();
     r.at(1, death({ faction: "red" }));
-    r.at(20, death({ faction: "red", unitKind: "titan", value: 475 }));
-    expect(r.banners.at(-1)).toMatchObject({ key: "kill-titan", text: "Titan down", say: "Enemy Titan destroyed", tone: "good" });
+    r.at(20, death({ faction: "red", unitKind: "mastodon", value: 475 }));
+    expect(r.banners.at(-1)).toMatchObject({ key: "kill-mastodon", text: "Mastodon down", say: "Enemy Mastodon destroyed", tone: "good" });
     const s = rig();
     s.at(1, death({ faction: "red" }));
     s.at(20, death({ faction: "red" }), death({ faction: "red", unitKind: "hornet", value: 375 }));
@@ -385,12 +385,12 @@ describe("battle callouts", () => {
     r.w.factions.blue.pending = { kind: "airpad", remaining: 0, ready: true };
     r.at(4);
     expect(r.keys()).toEqual(["construction", "construction"]);
-    const vet = spawnUnit(r.w, "titan", "blue", 5, 5);
+    const vet = spawnUnit(r.w, "mastodon", "blue", 5, 5);
     vet.rank = 1;
     r.at(5, { type: "rankUp", id: vet.id });
     vet.rank = 2;
     r.at(6, { type: "rankUp", id: vet.id });
-    expect(r.radio.at(-1)).toMatchObject({ key: "promoted", text: "Titan promoted", priority: 3 });
+    expect(r.radio.at(-1)).toMatchObject({ key: "promoted", text: "Mastodon promoted", priority: 3 });
   });
 
   it("closes with victory or defeat, then falls silent", () => {

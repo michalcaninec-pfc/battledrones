@@ -25,6 +25,7 @@ import {
   layerTargets,
   mtof,
   stinger,
+  stingerFor,
   type BellKind,
   type DrumVoice,
   type Flavour,
@@ -165,18 +166,19 @@ export class Music {
   }
 
   /**
-   * The match ended: resolve into a victory fanfare or defeat lament and
+   * The match ended: resolve into a victory fanfare, a defeat lament or, when
+   * nobody won (Robot Love's draw), a sweet sting on the tonic major, and
    * settle on a quiet coda. Returns false when music is off (play the SFX
    * jingle instead).
    */
-  finale(kind: "victory" | "defeat"): boolean {
+  finale(kind: "victory" | "defeat" | "draw"): boolean {
     if (this.finished) return true;
     if (!this.running || !this.e || !this.g) return false;
     this.finished = true;
     this.mode = "end";
     const t = this.nextBeat(0.04);
     this.renderEvents(this.composer.closeGates(), t);
-    this.renderChord(this.composer.holdTonic(kind === "victory", 64), t, true);
+    this.renderChord(this.composer.holdTonic(kind !== "defeat", 64), t, true);
     this.playStinger(kind, t, true);
     this.g.ambience.stop(t + 2);
     return true;
@@ -192,16 +194,7 @@ export class Music {
 
   /** Announcements: 'epic' lines get a rising call, 'bad' ones a warning stab (and raise the tension). */
   announced(a: Announcement): void {
-    if ((a.priority ?? 2) > 2) return;
-    const kind: StingerKind | null = /first.?blood/i.test(a.key)
-      ? "first-blood"
-      : a.tone === "epic"
-        ? "epic"
-        : a.tone === "bad"
-          ? "bad"
-          : a.tone === "good" && (a.priority ?? 2) <= 1
-            ? "good"
-            : null;
+    const kind = stingerFor(a);
     if (!kind) return;
     if (kind === "bad" && this.e) {
       this.bumpLevel = 0.4;

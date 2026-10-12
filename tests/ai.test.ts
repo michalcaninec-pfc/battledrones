@@ -101,7 +101,7 @@ describe("AI commander", () => {
       step(w, tickAi(w, "red", state));
       const red = [...w.units.values()].filter((u) => u.faction === "red");
       maxStingers = Math.max(maxStingers, red.filter((u) => u.kind === "stinger").length);
-      for (const u of red) expect(["titan", "mortar", "lancer"]).not.toContain(u.kind);
+      for (const u of red) expect(["mastodon", "mortar", "lancer"]).not.toContain(u.kind);
     }
     expect(maxStingers).toBeLessThanOrEqual(4);
     const redBuildings = [...w.buildings.values()].filter((b) => b.faction === "red");
@@ -200,7 +200,7 @@ describe("AI and robot infantry", () => {
   });
 
   for (const [diff, snipers] of [["normal", true], ["easy", false]] as const)
-    it(`answers Titans with Rocket Squads and enemy squads with ${snipers ? "Sniper Teams" : "no Snipers (Easy)"}`, () => {
+    it(`answers Mastodons with Rocket Squads and enemy squads with ${snipers ? "Sniper Teams" : "no Snipers (Easy)"}`, () => {
       const w = createMapWorld("proving-grounds");
       const ai = createAiState("ironclad", diff, 1);
       const hq = hqOf(w, "red")!;
@@ -209,7 +209,7 @@ describe("AI and robot infantry", () => {
       spawnBuilding(w, "tech-lab", "red", hq.tx + 1, hq.ty + 4);
       w.factions.red.scrap = 6000;
       const foes = [
-        ...[0, 1].map((i) => spawnUnit(w, "titan", "blue", c.x - 6 + i, c.y + 5)),
+        ...[0, 1].map((i) => spawnUnit(w, "mastodon", "blue", c.x - 6 + i, c.y + 5)),
         ...[0, 1, 2, 3, 4, 5].map((i) => spawnUnit(w, "trooper", "blue", c.x - 6 + (i % 3) * 0.8, c.y + 6.5 + Math.floor(i / 3) * 0.8))
       ];
       for (const u of foes) w.powers.stunned.set(u.id, 1e9);
@@ -280,13 +280,13 @@ describe("AI and robot infantry", () => {
     expect(units(w, "red", "stinger").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("Ironclad escorts its Titans with Rocket Squads, one per Titan", () => {
+  it("Ironclad escorts its Mastodons with Rocket Squads, one per Mastodon", () => {
     const w = createMapWorld("proving-grounds");
     const ai = createAiState("ironclad", "normal", 1);
     const hq = hqOf(w, "red")!;
     const c = buildingCenter(hq);
     spawnBuilding(w, "assembly-bay", "red", hq.tx - 3, hq.ty + 4);
-    for (let i = 0; i < 3; i++) spawnUnit(w, "titan", "red", c.x - 3 + i * 1.2, c.y + 8);
+    for (let i = 0; i < 3; i++) spawnUnit(w, "mastodon", "red", c.x - 3 + i * 1.2, c.y + 8);
     w.factions.red.scrap = 3000;
     const rockets: number[] = [];
     for (let i = 0; i < 60 * TICK_RATE; i++) {
@@ -294,7 +294,7 @@ describe("AI and robot infantry", () => {
       for (const cmd of cmds) if (cmd.type === "produce" && cmd.unit === "rocket-squad") rockets.push(w.tick);
       step(w, cmds);
     }
-    // nothing of the enemy's seen: the Rockets are for its own Titans
+    // nothing of the enemy's seen: the Rockets are for its own Mastodons
     expect(ai.seenHeavy).toBe(0);
     expect(rockets).toHaveLength(3);
   });

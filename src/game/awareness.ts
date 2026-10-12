@@ -14,9 +14,11 @@
  * unit-tested (tests/awareness.test.ts).
  */
 import { BUILDINGS, TICK_RATE, UNITS } from "../sim/balance";
+import { isAnchored } from "../sim/goliath";
 import { isTransport, unitSeenBy } from "../sim/infantry";
 import { POWER_NAMES } from "../sim/powers";
 import type { Faction, FxEvent, Unit, UnitKind, World } from "../sim/types";
+import { hqOf } from "../sim/world";
 import { CalldownCredit } from "./calldown-credit";
 
 export const AWARE = {
@@ -85,6 +87,16 @@ export const AWARE = {
     lingerS: 1.5
   }
 } as const;
+
+/**
+ * Is this Goliath part of its side's base? An anchored one is (a drop-off,
+ * a barracks, a build ring: GOLIATH.md), and once the side's HQ has fallen
+ * any Goliath is: it is the last life, so the match is lost with it. Hits on
+ * a base Goliath raise the same alarms as hits on a building.
+ */
+export function baseGoliath(w: World, u: Unit): boolean {
+  return !!u.goliath && (isAnchored(u) || !hqOf(w, u.faction));
+}
 
 // ===================================================================== speed
 
@@ -244,9 +256,12 @@ export class HeatMap {
           cls = hq ? 4 : 3;
           heat = hq ? H.hitHq : H.hitBuilding;
         } else {
-          const harv = w.units.get(ev.id)?.kind === "harvester";
-          cls = harv ? 2 : 1;
-          heat = harv ? H.hitHarvester : H.hitUnit;
+          const u = w.units.get(ev.id);
+          const harv = u?.kind === "harvester";
+          // (an anchored Goliath is a base: its arrow says so)
+          const base = !!u?.goliath && isAnchored(u);
+          cls = base ? 3 : harv ? 2 : 1;
+          heat = base ? H.hitBuilding : harv ? H.hitHarvester : H.hitUnit;
         }
         this.add(ev.x, ev.y, cls, heat, cls === 4 ? ev.faction : undefined);
       } else if (ev.type === "shot" && !spectator) {
@@ -391,15 +406,18 @@ export interface InboundWarning {
 
 /** What to call a raid led by `lead`, and what beats it (from the duel matrix, tools/balance.ts). */
 export function raidAdvice(domain: RaidDomain, lead: UnitKind): { what: string; advice: string } {
-  if (domain === "mixed") return { what: "strike force", advice: "Flak and Titans, or a Turret" };
+  if (domain === "mixed") return { what: "strike force", advice: "Flak and Mastodons, or a Turret" };
   if (domain === "air") {
     if (lead === "hornet") return { what: "bombers", advice: "Flak, Raptors or a SAM" };
     if (lead === "condor") return { what: "dropships", advice: "Flak, Raptors or a SAM" };
     return { what: "drones", advice: "Flak, Raptors or a Turret" };
   }
   switch (lead) {
-    case "titan":
-      return { what: "Titans", advice: "Rocket Squads, Lancers or Wasps" };
+    case "goliath":
+      // (the answers GOLIATH.md tunes it against; its Menders are the next thing to shoot)
+      return { what: "Goliath", advice: "Rocket Squads, Wasps, Lancers or Hornets" };
+    case "mastodon":
+      return { what: "Mastodons", advice: "Rocket Squads, Lancers or Wasps" };
     case "trooper":
       return { what: "troops", advice: "Mortars, Turrets or Snipers" };
     case "rocket-squad":
@@ -411,7 +429,7 @@ export function raidAdvice(domain: RaidDomain, lead: UnitKind): { what: string; 
     case "lancer":
       return { what: "Lancers", advice: "Stingers or Hornets" };
     default:
-      return { what: "tanks", advice: "Titans, Wasps or a Turret" };
+      return { what: "tanks", advice: "Mastodons, Wasps or a Turret" };
   }
 }
 
@@ -432,10 +450,11 @@ interface Group {
 
 /**
  * "Enemy drones inbound": watches for visible armed enemy units (and Condors,
- * loaded or not) coming within AWARE.inbound.radius tiles of the player's buildings or harvesters,
- * and warns once per group (a group seen in the zone within the last 20 s
- * isn't new), with counter advice by domain. Only what the player can see
- * counts, so it never reveals anything the fog hides.
+ * loaded or not) coming within AWARE.inbound.radius tiles of the player's buildings or harvesters
+ * (or a Goliath that is a base: baseGoliath), and warns once per group (a
+ * group seen in the zone within the last 20 s isn't new), with counter
+ * advice by domain. Only what the player can see counts, so it never reveals
+ * anything the fog hides (an enemy Goliath is always seen: it can't hide).
  */
 export class InboundWatch {
   /** Last sim time each enemy unit was seen inside the zone. */
@@ -467,15 +486,19 @@ export class InboundWatch {
     if (t - this.lastScan < I.scanS - 1e-6) return [];
     this.lastScan = t;
     const { world: w, player } = this.h;
-    // what we guard: buildings (by footprint edge) and harvesters
+    // what we guard: buildings (by footprint edge), harvesters, and a Goliath that is a base
+    // (anchored, or our last life once the HQ is gone)
     const guards: { x: number; y: number; r: number }[] = [];
     for (const b of w.buildings.values())
       if (b.faction === player) {
         const s = BUILDINGS[b.kind].size;
         guards.push({ x: b.tx + s / 2, y: b.ty + s / 2, r: s / 2 });
       }
-    for (const u of w.units.values())
-      if (u.faction === player && u.kind === "harvester") guards.push({ x: u.x, y: u.y, r: 0 });
+    for (const u of w.units.values()) {
+      if (u.faction !== player) continue;
+      if (u.kind === "harvester") guards.push({ x: u.x, y: u.y, r: 0 });
+      else if (baseGoliath(w, u)) guards.push({ x: u.x, y: u.y, r: UNITS[u.kind].radius });
+    }
     if (guards.length === 0) return [];
     const near: { id: number; x: number; y: number; kind: UnitKind }[] = [];
     for (const u of w.units.values()) {
@@ -580,7 +603,7 @@ export class InboundWatch {
 export const TEMPO = {
   /** An enemy calldown threatens our units within its radius plus this (tiles); buildings by centre, one more. */
   reach: 1,
-  /** HQ hits are a new attack after this long without one (sim seconds). */
+  /** HQ hits (or, with the HQ gone, Goliath hits) are a new attack after this long without one (sim seconds). */
   hqQuietS: 20
 } as const;
 
@@ -597,8 +620,8 @@ export function calldownThreatens(w: World, player: Faction, x: number, y: numbe
 }
 
 export interface TempoDrop {
-  cause: "calldown" | "inbound" | "hq";
-  /** "enemy Barrage inbound", "enemy drones inbound", "HQ under attack". */
+  cause: "calldown" | "inbound" | "hq" | "goliath";
+  /** "enemy Barrage inbound", "enemy drones inbound", "HQ under attack", "Goliath under attack". */
   note: string;
   x: number;
   y: number;
@@ -610,10 +633,13 @@ export interface TempoDrop {
  * move. When the game runs faster than 1× and something needs the player's
  * hands, the speed drops back to 1×: an enemy calldown aimed at their units or
  * buildings, a (spoken) inbound raid warning, or the HQ coming under a new
- * attack (first hit after `hqQuietS` without one). Spectators never get this.
+ * attack (first hit after `hqQuietS` without one) — and once the HQ has
+ * fallen, a Goliath coming under a new attack, since losing the last one
+ * loses the match. Spectators never get this.
  */
 export class TempoGuard {
   private lastHqHit = -Infinity;
+  private lastGoliathHit = -Infinity;
 
   constructor(private h: { world: World; player: Faction }) {}
 
@@ -628,7 +654,15 @@ export class TempoGuard {
     let hq: TempoDrop | null = null;
     for (const ev of fx) {
       if (ev.type === "hit") {
-        if (ev.faction !== player || !ev.building || w.buildings.get(ev.id)?.kind !== "hq") continue;
+        if (ev.faction !== player) continue;
+        if (!ev.building) {
+          // the last life: a Goliath with no HQ behind it (with the HQ standing, it's one more thing under fire)
+          if (!w.units.get(ev.id)?.goliath || hqOf(w, player)) continue;
+          if (t - this.lastGoliathHit > TEMPO.hqQuietS) hq ??= { cause: "goliath", note: "Goliath under attack", x: ev.x, y: ev.y };
+          this.lastGoliathHit = t;
+          continue;
+        }
+        if (w.buildings.get(ev.id)?.kind !== "hq") continue;
         // HQ hits are tracked at any speed, so speeding up mid-siege doesn't snap back
         if (t - this.lastHqHit > TEMPO.hqQuietS) hq ??= { cause: "hq", note: "HQ under attack", x: ev.x, y: ev.y };
         this.lastHqHit = t;
@@ -656,9 +690,9 @@ export interface SideTally {
  * Who is winning the fight in view? Units (and armed defences) inside the
  * view rectangle, scored cost × remaining HP fraction. Enemies count only if
  * the player can see them (`visible`, and `seen` for the unit itself: a
- * Sniper Team hidden in the woods doesn't count); harvesters and other
- * unarmed units don't count. Spectators: `player` is blue and `visible`
- * always true.
+ * Sniper Team hidden in the woods doesn't count) — except a kind the enemy
+ * always sees (a Goliath, fog or not); harvesters and other unarmed units
+ * don't count. Spectators: `player` is blue and `visible` always true.
  */
 export function tallyView(
   w: World,
@@ -673,7 +707,7 @@ export function tallyView(
     const st = UNITS[u.kind];
     if (st.targets === "none" || !inView(u.x, u.y)) continue;
     const mine = u.faction === player;
-    if (!mine && (!visible(u.x, u.y) || !seen(u))) continue;
+    if (!mine && !st.alwaysVisible && (!visible(u.x, u.y) || !seen(u))) continue;
     const side = mine ? own : enemy;
     side.n++;
     side.value += st.cost * Math.max(0, u.hp) / st.hp;

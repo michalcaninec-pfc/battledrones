@@ -10,11 +10,11 @@ export const TERRAIN_PX = 48;
 export const TERRAIN_CHUNK = 1024;
 
 export const UNIT_KINDS: UnitKind[] = [
-  "harvester", "scout", "stinger", "flak-crawler", "mortar", "titan", "lancer",
-  "wasp", "raptor", "hornet", "mender", "trooper", "rocket-squad", "sniper", "condor"
+  "harvester", "scout", "stinger", "flak-crawler", "mortar", "mastodon", "lancer",
+  "wasp", "raptor", "hornet", "mender", "trooper", "rocket-squad", "sniper", "condor", "goliath"
 ];
 export const BUILDING_KINDS: BuildingKind[] = [
-  "hq", "fab-plant", "airpad", "tech-lab", "depot", "turret", "sam-site", "radar", "assembly-bay"
+  "hq", "fab-plant", "airpad", "tech-lab", "depot", "turret", "sam-site", "radar", "assembly-bay", "gantry"
 ];
 
 /** Terrain chunk grid for a map (chunks per side). */

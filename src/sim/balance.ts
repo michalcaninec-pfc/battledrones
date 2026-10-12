@@ -67,6 +67,8 @@ export interface UnitStats extends ArmedStats {
   squad?: number;
   /** Transport (Condor): infantry squads it can carry. */
   capacity?: number;
+  /** Always visible to the enemy, through fog and on the minimap (the Goliath: it can't hide). */
+  alwaysVisible?: boolean;
 }
 
 export interface BuildingStats extends ArmedStats {
@@ -80,6 +82,12 @@ export interface BuildingStats extends ArmedStats {
   buildTime: number;
   /** Any one of these must already stand before construction can start. */
   requires?: BuildingKind[];
+  /** Every one of these must already stand before construction can start (the Gantry). */
+  requiresAll?: BuildingKind[];
+  /** One per side: it can't be started while the side has one (standing). */
+  unique?: boolean;
+  /** Always visible to the enemy, through fog and on the minimap, with what it is building. */
+  alwaysVisible?: boolean;
   /** Harvesters may unload scrap here. */
   dropOff?: boolean;
 }
@@ -121,8 +129,8 @@ export const UNITS: Record<UnitKind, UnitStats> = {
     splash: 1.1, projectileSpeed: 5.5, dmgType: "explosive", fx: "shell",
     buildTime: 10, builtAt: "fab-plant", requires: "tech-lab", turret: true, radius: 0.42
   },
-  titan: {
-    name: "Titan", role: "Super-heavy tank. Crushes light armies. Can't hit air.",
+  mastodon: {
+    name: "Mastodon", role: "Super-heavy tank. Crushes light armies. Can't hit air.",
     cost: 475, hp: 1050, speed: 1.2, sight: 6, domain: "ground", armor: "heavy",
     targets: "ground", dps: 46, range: 4, shotInterval: 1.2, dmgType: "cannon", fx: "heavy-cannon",
     buildTime: 15, builtAt: "fab-plant", requires: "tech-lab", turret: true, radius: 0.55
@@ -171,7 +179,7 @@ export const UNITS: Record<UnitKind, UnitStats> = {
   // (the spec's 180 HP and 0.8× vs air lost to Hornets by 0.59 cost for cost — their bombs
   // splash whole clumps of squads; 210 HP and 1.5× vs air kill them, as the role says)
   "rocket-squad": {
-    name: "Rocket Squad", role: "Anti-armour rockets. Kill Titans and Hornets. Weak vs infantry.",
+    name: "Rocket Squad", role: "Anti-armour rockets. Kill Mastodons and Hornets. Weak vs infantry.",
     cost: 175, hp: 210, speed: 1.6, sight: 6, domain: "ground", armor: "infantry",
     targets: "both", dps: 26, range: 4, shotInterval: 1.5, dmgType: "cannon", fx: "rockets", airMult: 1.5,
     buildTime: 9, builtAt: "assembly-bay", radius: 0.4, squad: 3
@@ -188,12 +196,21 @@ export const UNITS: Record<UnitKind, UnitStats> = {
     cost: 200, hp: 400, speed: 3.6, sight: 6, domain: "air", armor: "medium",
     targets: "none", dps: 0, range: 0,
     buildTime: 9, builtAt: "airpad", radius: 0.5, capacity: 2
+  },
+  // The Goliath fights with GOLIATH.weapons (goliath.ts), not these: they
+  // summarise them for estimates and tooltips (every weapon's DPS together,
+  // the mortars' reach). Cost is the first one's: each costs GOLIATH.costStep more.
+  goliath: {
+    name: "Goliath", role: "Giant walking mech and mobile base. Anchor it to build, train and unload anywhere.",
+    cost: 1600, hp: 3000, speed: 1.0, sight: 10, domain: "ground", armor: "heavy",
+    targets: "both", dps: 125, range: 8,
+    buildTime: 60, builtAt: "gantry", radius: 1.0, alwaysVisible: true
   }
 };
 
 export const BUILDINGS: Record<BuildingKind, BuildingStats> = {
   hq: {
-    name: "HQ", role: "Command centre. Builds Harvesters, takes scrap. Lose it, lose the game.",
+    name: "HQ", role: "Command centre. Builds Harvesters, takes scrap. Lose it and every Goliath, lose the game.",
     cost: 0, hp: 3200, sight: 7, size: 3, buildTime: 0, dropOff: true,
     // point defence: swats early drone raids, leaves ground assaults to real defences
     targets: "air", dps: 9, range: 4.5, shotInterval: 0.5, dmgType: "kinetic", fx: "mg"
@@ -209,7 +226,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingStats> = {
     targets: "none", dps: 0, range: 0
   },
   "tech-lab": {
-    name: "Tech Lab", role: "Unlocks Mortar, Titan, Lancer, Hornet and Sniper.",
+    name: "Tech Lab", role: "Unlocks Mortar, Mastodon, Lancer, Hornet and Sniper.",
     cost: 450, hp: 800, sight: 4, size: 2, buildTime: 20, requires: ["fab-plant", "airpad", "assembly-bay"],
     targets: "none", dps: 0, range: 0
   },
@@ -236,6 +253,12 @@ export const BUILDINGS: Record<BuildingKind, BuildingStats> = {
   "assembly-bay": {
     name: "Assembly Bay", role: "Builds robot infantry.",
     cost: 250, hp: 700, sight: 4, size: 2, buildTime: 15,
+    targets: "none", dps: 0, range: 0
+  },
+  gantry: {
+    name: "Gantry", role: "Builds the Goliath. One per side, and the enemy can always see it.",
+    cost: 600, hp: 1200, sight: 5, size: 3, buildTime: 25,
+    requiresAll: ["fab-plant", "airpad", "tech-lab", "assembly-bay"], unique: true, alwaysVisible: true,
     targets: "none", dps: 0, range: 0
   }
 };
@@ -355,9 +378,9 @@ export const INFANTRY = {
   concealRadius: 3,
   /** …until this many seconds after it fires. */
   concealAfterShot: 2,
-  /** HP/s a moving Titan deals to an enemy squad it rolls over. */
+  /** HP/s a moving Mastodon deals to an enemy squad it rolls over. */
   crushDps: 30,
-  /** A Titan crushes squads whose centre is within its radius + this (tiles). */
+  /** A Mastodon crushes squads whose centre is within its radius + this (tiles). */
   crushReach: 0.15,
   /** Uplink capture weight of a squad (vehicles count 1, aircraft 0.5). */
   captureWeight: 2,
@@ -507,4 +530,84 @@ export const OBJECTIVES = {
     unit: "lancer" as UnitKind,
     unitRank: 1
   }
+};
+
+/** One Goliath weapon system: a weapon, and the share of max HP below which damage takes it offline. */
+export interface GoliathWeaponStats extends ArmedStats {
+  name: string;
+  /** Offline below this share of max HP (0: never — the machine guns). */
+  lostBelow: number;
+}
+
+/**
+ * The Goliath (GOLIATH.md; goliath.ts, lift.ts) and its Gantry. Every number
+ * here is a starting point for tuning with tools/balance.ts, not a promise.
+ */
+export const GOLIATH = {
+  /** Each Goliath costs this much more (share of list price) for every one the side already has (alive, or on the Gantry). */
+  costStep: 0.25,
+  /** Goliaths a Gantry queues at once (one on the cradle). */
+  queueMax: 1,
+  /** Build share past which the enemy hears "Enemy Goliath nearly complete". */
+  nearlyDone: 0.85,
+  /** Seconds to dig in (anchor), and to pack up again: leaving under fire is the risky moment. */
+  anchorTime: 4,
+  packTime: 6,
+  /** Footprint edge (tiles) of the ground it needs to anchor on: buildable, nothing in the way. Harvesters dock at its edge. */
+  footprint: 2,
+  /** Anchored: buildings may go up this far (tiles) from its centre to their footprint, as outposts. */
+  buildRing: 3,
+  /** Seconds a repaired weapon takes to reboot… */
+  reboot: 2.5,
+  /** …once HP is back this share of max above the line where it went offline (no flicker at the line). */
+  restoreMargin: 0.05,
+  /**
+   * Weapon strength ≈ 2 Mortars, 1 Lancer, 1 Mastodon and 1 Trooper Squad
+   * (≈ 1,400 scrap of firepower), lost in this order as its health falls.
+   */
+  weapons: {
+    // two shoulder tubes taking turns: a Mortar shell every 1.5 s. (A tighter
+    // burst than the Mortar's 1.1: at 1.1 a cost-equal group of Rocket Squads
+    // only edged it, −0.14 in tools/balance.ts goliath duels; at 0.9, −0.39,
+    // a real answer like Lancers, Wasps and Hornets, and it still beats Troopers.)
+    mortars: {
+      name: "Mortars", lostBelow: 0.75,
+      targets: "ground", dps: 36, range: 8, minRange: 2.5, shotInterval: 1.5,
+      splash: 0.9, projectileSpeed: 5.5, dmgType: "explosive", fx: "shell"
+    },
+    laser: {
+      name: "Eye laser", lostBelow: 0.5,
+      targets: "both", dps: 28, range: 4.5, shotInterval: 0.8, dmgType: "laser", fx: "laser", airMult: 0.65
+    },
+    // two arm cannons taking turns: a Mastodon's damage, half a shell at a time
+    cannons: {
+      name: "Arm cannons", lostBelow: 0.25,
+      targets: "ground", dps: 46, range: 4, shotInterval: 0.6, dmgType: "cannon", fx: "heavy-cannon"
+    },
+    mg: {
+      name: "Machine guns", lostBelow: 0,
+      targets: "both", dps: 15, range: 3, shotInterval: 0.4, dmgType: "kinetic", fx: "mg", airMult: 0.5
+    }
+  } as Record<"mortars" | "laser" | "cannons" | "mg", GoliathWeaponStats>,
+  /** Two-Condor lift (lift.ts). */
+  lift: {
+    /** Lift speed as a share of the Condor's. */
+    speedMult: 0.5,
+    /** Dropped over land (a Condor shot down): this share of max HP in damage. Over water, sea, lava or rock: destroyed. */
+    dropDamage: 0.25,
+    /** Each Condor hooks on this far (tiles) to either side of the Goliath's centre. */
+    span: 1.1,
+    /** A Condor within this distance (tiles) of its hook point has hooked on. */
+    hookRange: 0.3,
+    /** A set-down point that isn't ground a Goliath can stand on snaps to the nearest that is, this far (tiles) at most. */
+    setDownSearch: 6
+  },
+  /** A destroyed Goliath scatters this share of its list price over `piles` scrap piles across ~2×`spread` tiles. */
+  salvage: { share: 0.3, piles: [6, 8] as [number, number], spread: 2.5 },
+  /** A Gantry destroyed mid-build scatters this share of the scrap paid × the build's progress, in up to `piles` piles. */
+  gantrySalvage: { share: 0.3, piles: 4, spread: 2.5 },
+  /** Seconds a scrap pile lies before it burns out (longer than a wreck: holding the ground pays). */
+  pileTtl: 90,
+  /** Robot Love mutator: enemy Goliaths this close (tiles, centre to centre) fall in love, and the match is a draw. */
+  love: { range: 5 }
 };

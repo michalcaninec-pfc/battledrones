@@ -190,7 +190,7 @@ export const eliteUniform = { value: 0.12 };
 /** …scaled up into the elite sheen's colour. */
 const ELITE_SHEEN = 6;
 
-function modelMaterial(v: VariantSpec, elite: boolean, canopy = false): THREE.MeshStandardMaterial {
+function modelMaterial(v: VariantSpec, elite: boolean, canopy = false, clear = false): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({
     vertexColors: true,
     flatShading: true,
@@ -218,6 +218,8 @@ function modelMaterial(v: VariantSpec, elite: boolean, canopy = false): THREE.Me
     key: `model${v.ghost ? "g" : ""}${canopy ? "c" : ""}`,
     also: (s) => {
       Object.assign(s.uniforms, uniforms);
+      // a fog-free twin: the same program, its own switch held off (see clearMat)
+      if (clear) s.uniforms.uFowOn = CLEAR_FOW;
       s.vertexShader = s.vertexShader
         .replace("#include <common>", `#include <common>\nattribute float glow;\nvarying float vGlow;${canopy ? CANOPY_VERT_DECL : ""}`)
         .replace("#include <color_vertex>", `#include <color_vertex>\nvGlow = glow;${canopy ? CANOPY_VERT : ""}`);
@@ -257,6 +259,9 @@ function modelMaterial(v: VariantSpec, elite: boolean, canopy = false): THREE.Me
 }
 
 let modelMats: Record<Variant, THREE.MeshStandardMaterial> | null = null;
+let clearMats: Record<Variant, THREE.MeshStandardMaterial> | null = null;
+/** The fog switch every fog-free twin reads: always off. */
+const CLEAR_FOW = { value: 0 };
 
 /** The shared model material for a variant. */
 export function modelMat(v: Variant = "normal"): THREE.MeshStandardMaterial {
@@ -266,6 +271,38 @@ export function modelMat(v: Variant = "normal"): THREE.MeshStandardMaterial {
     modelMats = out;
   }
   return modelMats[v];
+}
+
+/**
+ * The fog-free twin of a variant's model material, for what the enemy always
+ * sees (a Goliath, a Gantry and the mech taking shape on it): drawn live and
+ * in full colour through explored ground and the shroud alike, where the
+ * plain material would grey it to memory or hide it under the shroud. It
+ * compiles to the same program as the plain one (only its fog switch, a
+ * uniform, differs), so it costs no shader and no stall the first time a
+ * Goliath walks on.
+ */
+export function clearMat(v: Variant = "normal"): THREE.MeshStandardMaterial {
+  if (!clearMats) {
+    const out = {} as Record<Variant, THREE.MeshStandardMaterial>;
+    for (const k of Object.keys(VARIANTS) as Variant[]) out[k] = modelMaterial(VARIANTS[k], k === "elite", false, true);
+    clearMats = out;
+  }
+  return clearMats[v];
+}
+
+/**
+ * Draw every model mesh under `root` clear of the fog from now on (its
+ * variant swaps keep to the fog-free twins): see clearMat.
+ */
+export function clearOfFog(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    if (!(o as THREE.Mesh).isMesh || !o.userData.model) return;
+    const m = o as THREE.Mesh;
+    o.userData.clear = true;
+    const v = (Object.keys(VARIANTS) as Variant[]).find((k) => modelMats?.[k] === m.material) ?? "normal";
+    m.material = clearMat(v);
+  });
 }
 
 let canopyMat_: THREE.MeshStandardMaterial | null = null;
@@ -280,11 +317,11 @@ export function canopyMat(): THREE.MeshStandardMaterial {
   return (canopyMat_ ??= modelMaterial(VARIANTS.normal, false, true));
 }
 
-/** Swap every swappable mesh under `root` to a material variant. */
+/** Swap every swappable mesh under `root` to a material variant (fog-free meshes to its fog-free twin). */
 export function setVariant(root: THREE.Object3D, v: Variant): void {
   const mat = modelMat(v);
   root.traverse((o) => {
-    if ((o as THREE.Mesh).isMesh && o.userData.model) (o as THREE.Mesh).material = mat;
+    if ((o as THREE.Mesh).isMesh && o.userData.model) (o as THREE.Mesh).material = o.userData.clear ? clearMat(v) : mat;
   });
 }
 

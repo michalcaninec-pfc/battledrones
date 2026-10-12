@@ -1,7 +1,8 @@
 import { BUILDINGS, TERRAIN, TICK_RATE, UNITS } from "./balance";
+import { canWalk, goliathReachAt, isLifted } from "./goliath";
 import { crushes, isInfantry, tickCrush } from "./infantry";
 import { Terrain, type Faction, type Unit, type World } from "./types";
-import { inBounds, moveClassOf, passable, regionAt, regionLabels, terrainMult, terrainSpeed, type LandClass, type MoveClass } from "./world";
+import { domainOf, inBounds, moveClassOf, passable, regionAt, regionLabels, terrainMult, terrainSpeed, type LandClass, type MoveClass } from "./world";
 import { atan2, cos, hypot, sin } from "./fmath";
 
 const ARRIVE_DIST = 0.25;
@@ -255,6 +256,13 @@ export function moveUnitToward(w: World, u: Unit, x: number, y: number): boolean
   return false;
 }
 
+/** How close a unit needs to get to attack target `id` (a Goliath: its weapons still up that can hit it). */
+function reachFor(w: World, u: Unit, id: number): number {
+  if (!u.goliath) return UNITS[u.kind].range;
+  const t = w.units.get(id);
+  return goliathReachAt(u, t ? domainOf(t) : "ground");
+}
+
 /** Where to drive to reach a building: the nearest point of its footprint. */
 export function approachPoint(
   w: World,
@@ -286,7 +294,7 @@ export function vehicleSpots(w: World): Map<number, { x: number; y: number }> {
 
 /**
  * Per-tick movement for move / attack-move orders (combat may pause it),
- * then separation, then crushing: a Titan that drove this tick rolls over
+ * then separation, then crushing: a Mastodon that drove this tick rolls over
  * the enemy squads under it (infantry.ts). `spots` is vehicleSpots from the
  * start of the tick (squads only step aside for a vehicle that drove).
  */
@@ -297,6 +305,7 @@ export function tickMovement(w: World, pausedIds: Set<number>, spots: Map<number
   for (const u of w.units.values()) {
     const o = u.order;
     if (pausedIds.has(u.id)) continue;
+    if (!canWalk(u)) continue; // a Goliath digging in, anchored, packing up or on a lift (its order waits)
     if (o.type === "move" || o.type === "attackMove") {
       if (moveUnitToward(w, u, o.x, o.y)) u.order = { type: "idle" };
     } else if (o.type === "attack") {
@@ -311,7 +320,7 @@ export function tickMovement(w: World, pausedIds: Set<number>, spots: Map<number
         // artillery: back off out of minimum range instead of closing in
         const k = (minRange + 0.8) / Math.max(d, 0.01);
         moveUnitToward(w, u, p.x + (u.x - p.x) * k, p.y + (u.y - p.y) * k);
-      } else if (moveUnitToward(w, u, p.x, p.y) && d > UNITS[u.kind].range) {
+      } else if (moveUnitToward(w, u, p.x, p.y) && d > reachFor(w, u, o.targetId)) {
         // (combat pauses it once in range.) Got as close as the ground allows and still out of
         // range of a target across the water: give it up, so the unit fights what it can reach
         const mc = moveClassOf(u.kind);
@@ -339,14 +348,20 @@ const KIND_INDEX: Record<string, number> = Object.fromEntries(Object.keys(UNITS)
  * Gentle separation so same-domain units don't stack. Robot infantry give
  * way: a squad and a FRIENDLY vehicle that drove this tick (`driving`) part
  * by moving only the squad (it steps aside), and a squad and an ENEMY
- * vehicle don't part at all (tanks roll through squads — and Titans crush
+ * vehicle don't part at all (tanks roll through squads — and Mastodons crush
  * them). Squads among themselves, vehicles among themselves, and a squad
  * and a PARKED friendly vehicle share the push as usual (a squad walking up
  * to one shoulders it aside, as a second vehicle would — else it would be
  * pinned there, short of its goal, for good).
+ *
+ * A dug-in Goliath (anchoring, anchored or packing up) is never pushed:
+ * whatever it meets takes the whole push (its footprint is in the occupancy
+ * grid, so paths already go round it). A walking one parts like any unit. A
+ * Goliath on a lift and its Condors are placed by the lift (lift.ts), so
+ * they sit separation out.
  */
 function separate(w: World, driving: Set<number>): void {
-  const units = [...w.units.values()];
+  const units = [...w.units.values()].filter((u) => u.order.type !== "lift" && !isLifted(u));
   for (let i = 0; i < units.length; i++) {
     const a = units[i]!;
     const da = UNITS[a.kind].domain;
@@ -356,7 +371,8 @@ function separate(w: World, driving: Set<number>): void {
       if (UNITS[b.kind].domain !== da) continue;
       const dx = b.x - a.x;
       const dy = b.y - a.y;
-      if (Math.abs(dx) > 1.2 || Math.abs(dy) > 1.2) continue;
+      const reach = Math.max(1.2, UNITS[a.kind].radius + UNITS[b.kind].radius);
+      if (Math.abs(dx) > reach || Math.abs(dy) > reach) continue;
       const ib = isInfantry(b.kind);
       if (ia !== ib && a.faction !== b.faction) continue; // enemy vehicle and squad: drive through
       const d = hypot(dx, dy);
@@ -380,6 +396,14 @@ function separate(w: World, driving: Set<number>): void {
       } else {
         ux = dx / d;
         uy = dy / d;
+      }
+      const planted = (u: Unit) => !!u.goliath && !canWalk(u);
+      if (planted(a) && planted(b)) continue; // (two dug in never budge: their footprints can't overlap anyway)
+      if (planted(a) !== planted(b)) {
+        // a dug-in Goliath doesn't budge: the other takes the whole push
+        if (planted(a)) nudge(w, b, ux * push * 2, uy * push * 2);
+        else nudge(w, a, -ux * push * 2, -uy * push * 2);
+        continue;
       }
       if (ia !== ib && driving.has(ia ? b.id : a.id)) {
         // a squad steps aside for a friendly vehicle on the move: it takes the whole push

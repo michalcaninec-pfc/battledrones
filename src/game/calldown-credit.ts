@@ -8,7 +8,9 @@ import { hqOf } from "../sim/world";
  * XP), and its victims die in the same tick it lands, after that tick's
  * `calldownImpact` event. So a calldown kill is a death whose killer is the
  * enemy HQ — a building, no unit kind — within reach of one of that side's
- * impacts this tick. The presentation layers (streak callouts, the
+ * impacts this tick. A side with no HQ standing (Nomads, or one fighting on
+ * with a Goliath) still calls down strikes, with no HQ to credit: then its
+ * victims die with no killer at all, and such a death within reach counts. The presentation layers (streak callouts, the
  * chronicle and report, hero toasts, hotspots) use this to name the Barrage
  * or Sky Hammer instead of crediting "defences" or the HQ.
  *
@@ -39,16 +41,18 @@ export function powerPhrase(p: PowerKind): string {
 
 /**
  * Was `death` a calldown kill? `impacts` are this tick's impacts so far;
- * `hqId` names each side's HQ (null when it has none).
+ * `hqId` names each side's HQ (null when it has none), `hqStanding` says
+ * whether it still stands (a side without one credits its strikes to no one).
  */
 export function calldownKillOf(
   death: Death,
   impacts: readonly Impact[],
-  hqId: (f: Faction) => number | null
+  hqId: (f: Faction) => number | null,
+  hqStanding: (f: Faction) => boolean = (f) => hqId(f) !== null
 ): CalldownKill | null {
-  if (death.killerId === null || death.killerKind !== null) return null;
+  if (death.killerKind !== null) return null;
   const by: Faction = death.faction === "blue" ? "red" : "blue";
-  if (death.killerId !== hqId(by)) return null;
+  if (death.killerId === null ? hqStanding(by) : death.killerId !== hqId(by)) return null;
   const slack = death.buildingKind ? SLACK.building : SLACK.unit;
   let best: Impact | null = null;
   let bestD = Infinity;
@@ -97,7 +101,7 @@ export class CalldownCredit {
       return null;
     }
     if (ev.type !== "death" || this.impacts.length === 0) return null;
-    return calldownKillOf(ev, this.impacts, (f) => this.hqId(f));
+    return calldownKillOf(ev, this.impacts, (f) => this.hqId(f), (f) => hqOf(this.w, f) !== null);
   }
 
   /** One tick's events at once: death id → credit (empty when no calldown landed). */

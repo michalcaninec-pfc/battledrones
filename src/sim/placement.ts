@@ -4,10 +4,11 @@
  * `canPlaceBuilding` in economy.ts: these functions only explain why a spot
  * fails and find a good valid one, so they can never disagree with it.
  */
-import { BUILDINGS, ECONOMY, TERRAIN, UNITS } from "./balance";
-import { canPlaceBuilding } from "./economy";
+import { BUILDINGS, ECONOMY, GOLIATH, TERRAIN } from "./balance";
+import { canPlaceBuilding, inBaseRange } from "./economy";
+import { anchoredGoliaths, inGoliathRing, overlapsGoliath } from "./goliath";
 import { Terrain, type BuildingKind, type Faction, type World } from "./types";
-import { buildingAtTile, buildingCenter, distToBuilding, inBounds, terrainAt } from "./world";
+import { buildingAtTile, buildingCenter, domainOf, inBounds, terrainAt } from "./world";
 import { hypot } from "./fmath";
 
 /** Short names for unbuildable ground, per biome where it differs. */
@@ -66,20 +67,24 @@ export function placementBlocker(
     }
   if (offMap) return "Off the map";
   // the most fundamental problem first: nothing nearby can be fixed by nudging
-  if (!inBuildRange(w, faction, tx + size / 2, ty + size / 2)) return "Too far from base";
+  if (!inBuildRange(w, faction, tx + size / 2, ty + size / 2) && (kind === "hq" || !inGoliathRing(w, faction, tx, ty, size)))
+    return "Too far from base";
   if (ground !== null) return `Not on ${groundName(w, ground)}`;
   if (building) return "Blocked";
   for (const u of w.units.values())
-    if (UNITS[u.kind].domain === "ground" && u.x >= tx && u.x < tx + size && u.y >= ty && u.y < ty + size)
+    if (domainOf(u) === "ground" && u.x >= tx && u.x < tx + size && u.y >= ty && u.y < ty + size)
       return "Unit in the way";
+  if (overlapsGoliath(w, tx, ty, size)) return "Unit in the way";
   return "Blocked"; // a rule this explainer doesn't know about yet
 }
 
-/** Is a footprint centred at (cx, cy) within build range of `faction`'s base? */
+/**
+ * Is a footprint centred at (cx, cy) within build range of `faction`'s base?
+ * Outposts (built in a Goliath's ring) never count as base; the rings
+ * themselves are inGoliathRing.
+ */
 export function inBuildRange(w: World, faction: Faction, cx: number, cy: number): boolean {
-  for (const b of w.buildings.values())
-    if (b.faction === faction && distToBuilding(b, cx, cy) <= ECONOMY.buildRadius) return true;
-  return false;
+  return inBaseRange(w, faction, cx, cy);
 }
 
 /**
@@ -113,13 +118,15 @@ export function suggestPlacement(
   anchor: { x: number; y: number }
 ): { tx: number; ty: number } | null {
   const size = BUILDINGS[kind].size;
-  const r = Math.ceil(ECONOMY.buildRadius + size);
   const seen = new Set<number>();
   let best: { tx: number; ty: number } | null = null;
   let bestScore = Infinity;
-  for (const b of w.buildings.values()) {
-    if (b.faction !== faction) continue;
-    const c = buildingCenter(b);
+  // search around the base's buildings (not outposts: they don't count) and anchored Goliaths' rings
+  const centres: { c: { x: number; y: number }; r: number }[] = [];
+  for (const b of w.buildings.values())
+    if (b.faction === faction && !b.outpost) centres.push({ c: buildingCenter(b), r: Math.ceil(ECONOMY.buildRadius + size) });
+  if (kind !== "hq") for (const g of anchoredGoliaths(w, faction)) centres.push({ c: g, r: Math.ceil(GOLIATH.buildRing + size) });
+  for (const { c, r } of centres) {
     for (let dy = -r; dy <= r; dy++)
       for (let dx = -r; dx <= r; dx++) {
         const tx = Math.round(c.x + dx - size / 2);

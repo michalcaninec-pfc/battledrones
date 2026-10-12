@@ -85,13 +85,13 @@ export function tickFog(w: World): void {
       if (l.owner === f) stamp(w, fog.vis, l.x, l.y, OBJECTIVES.uplink.sight); // a held Uplink sees around it
     // Clear Skies mutator: everything is in sight for both sides
     if (rulesOf(w).fogOff) fog.vis.fill(Vis.Visible);
-    // memory: record enemy buildings whose footprint we can see now
+    // memory: record enemy buildings whose footprint we can see now (a Gantry: always)
     for (const b of w.buildings.values())
-      if (b.faction !== f && footprintVisible(w, f, b))
+      if (b.faction !== f && (BUILDINGS[b.kind].alwaysVisible || footprintVisible(w, f, b)))
         fog.known.set(b.id, { id: b.id, kind: b.kind, faction: b.faction, tx: b.tx, ty: b.ty });
-    // forget remembered buildings we can re-see are gone
+    // forget remembered buildings we can re-see are gone (a Gantry's fall is seen at once)
     for (const [id, kb] of fog.known)
-      if (!w.buildings.has(id) && footprintVisible(w, f, kb)) fog.known.delete(id);
+      if (!w.buildings.has(id) && (BUILDINGS[kb.kind].alwaysVisible || footprintVisible(w, f, kb))) fog.known.delete(id);
   }
 }
 

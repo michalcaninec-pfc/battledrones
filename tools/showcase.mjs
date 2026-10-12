@@ -42,10 +42,10 @@ await page.evaluate(() => {
     w.units.set(id, u);
     return u;
   };
-  const blue = [["titan", 0, 0], ["lancer", 0, 1.4], ["stinger", 0, -1.4], ["mortar", -3, 0.6], ["flak-crawler", -1.5, 2.2],
+  const blue = [["mastodon", 0, 0], ["lancer", 0, 1.4], ["stinger", 0, -1.4], ["mortar", -3, 0.6], ["flak-crawler", -1.5, 2.2],
     ["wasp", 1, -2.4], ["hornet", 1.4, 2.6], ["mender", -1.2, -1.2], ["raptor", 0.6, 3.6],
     ["trooper", 1.2, 1.2], ["rocket-squad", -1.8, -2.6], ["sniper", -3.6, -1.6]];
-  const red = [["titan", 5, 0], ["stinger", 5.2, 1.6], ["flak-crawler", 5.5, -1.5], ["wasp", 4, 3], ["raptor", 4.2, -3],
+  const red = [["mastodon", 5, 0], ["stinger", 5.2, 1.6], ["flak-crawler", 5.5, -1.5], ["wasp", 4, 3], ["raptor", 4.2, -3],
     ["lancer", 6.4, 2.6], ["harvester", 7, -0.5], ["trooper", 3.6, 1.4], ["rocket-squad", 4.4, -0.2]];
   for (const [k, dx, dy] of blue) add(k, "blue", cx - 3 + dx, cy + dy);
   for (const [k, dx, dy] of red) add(k, "red", cx - 1 + dx, cy + dy);

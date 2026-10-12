@@ -33,13 +33,13 @@ function coolDown(w: World): FxEvent[] {
 describe("wrecks", () => {
   it("a destroyed combat unit leaves a wreck worth ~30% of its cost where it died", () => {
     const w = createWorld(20, 20);
-    const t = spawnUnit(w, "titan", "red", 8.3, 9.6);
+    const t = spawnUnit(w, "mastodon", "red", 8.3, 9.6);
     t.facing = 1.2;
     const fx = kill(w, t);
     expect(w.wrecks).toHaveLength(1);
     const r = w.wrecks[0]!;
-    expect(r).toMatchObject({ id: t.id, kind: "titan", faction: "red", x: 8.3, y: 9.6, facing: 1.2 });
-    expect(r.value).toBe(Math.round(UNITS.titan.cost * SALVAGE.share));
+    expect(r).toMatchObject({ id: t.id, kind: "mastodon", faction: "red", x: 8.3, y: 9.6, facing: 1.2 });
+    expect(r.value).toBe(Math.round(UNITS.mastodon.cost * SALVAGE.share));
     expect(SALVAGE.share).toBeGreaterThanOrEqual(0.25);
     expect(SALVAGE.share).toBeLessThanOrEqual(0.35);
     expect(fx.some((e) => e.type === "death" && e.id === t.id)).toBe(true);
@@ -117,7 +117,7 @@ describe("salvage pickup", () => {
   it("pays out through the collector's income multiplier", () => {
     const w = createWorld(20, 20);
     w.factions.red.incomeMult = 1.3;
-    kill(w, spawnUnit(w, "titan", "blue", 6.5, 6.5));
+    kill(w, spawnUnit(w, "mastodon", "blue", 6.5, 6.5));
     spawnUnit(w, "harvester", "red", 6.5, 7.2); // harvesters salvage too
     const value = w.wrecks[0]!.value;
     coolDown(w);
@@ -160,7 +160,7 @@ describe("salvage pickup", () => {
   it("never blocks movement or building placement; a building placed on one clears it for its owner", () => {
     const w = createWorld(24, 12);
     spawnBuilding(w, "hq", "blue", 1, 4);
-    kill(w, spawnUnit(w, "titan", "red", 7.5, 5.5));
+    kill(w, spawnUnit(w, "mastodon", "red", 7.5, 5.5));
     coolDown(w);
     expect(w.wrecks).toHaveLength(1);
     expect(canPlaceBuilding(w, "blue", "turret", 7, 5)).toBe(true);
@@ -171,7 +171,7 @@ describe("salvage pickup", () => {
 
     // a tank drives straight across a wreck: it collects and keeps going
     const w2 = createWorld(24, 12);
-    kill(w2, spawnUnit(w2, "titan", "red", 12.5, 6.5));
+    kill(w2, spawnUnit(w2, "mastodon", "red", 12.5, 6.5));
     coolDown(w2);
     const s = spawnUnit(w2, "stinger", "blue", 3.5, 6.5);
     step(w2, [{ type: "move", faction: "blue", unitIds: [s.id], x: 20.5, y: 6.5 }]);
@@ -232,7 +232,7 @@ describe("AI salvage sweeps", () => {
     const { w, army, harvesters, buildings, wreck } = scene();
     const ctx = { army, harvesters, buildings, used: new Set<number>(), threatened: true, assault: false };
     expect(planSalvage(w, "red", ctx)).toHaveLength(0);
-    spawnUnit(w, "titan", "blue", wreck.x + 1.5, wreck.y + 2); // in plain view of the guards
+    spawnUnit(w, "mastodon", "blue", wreck.x + 1.5, wreck.y + 2); // in plain view of the guards
     tickFog(w);
     expect(planSalvage(w, "red", { ...ctx, threatened: false })).toHaveLength(0);
   });

@@ -9,14 +9,23 @@
 // the animation at that time (for screenshots); window.gallery.at(ms) moves it.
 //
 // ?only=condor lines up the dropship per faction: loaded and hovering low with its ramp down, loaded in
-// flight, empty — then a Titan, a Trooper Squad and a Hornet for scale (?cface=rad turns the Condors).
+// flight, empty — then a Mastodon, a Trooper Squad and a Hornet for scale (?cface=rad turns the Condors).
 // ?only=condor-ring shows it loaded at six headings, its ramp up and down by turns.
 // ?pitch=deg overrides the camera's pitch (8 for a side view).
+//
+// ?only=goliath lines up the Goliath per faction: walking (animated), standing, digging in, anchored, every
+// weapon down (pods sagging, eye dark, cannons limp), rebooting (eye relit, tubes cycling), lifted between two
+// Condors, toppled and burnt, in love (Robot Love) — then a Mastodon and an HQ for scale.
+// ?only=gantry shows the Gantry's six stages per faction: empty, foundation, frame, armament, finishing, rollout.
+// ?icon=goliath|gantry: one blue model alone on a flat ?bg= colour (default black), for shooting HUD portraits
+// (shot on black and on white, the two give the alpha: see public/assets/icons/goliath.webp).
 import * as THREE from "three";
 import { Stage } from "../src/game/three/stage";
-import { buildingDef, crateDef, instance, podDef, uplinkDef, unitDef, unitScale, chuteGeometry, modelMesh, rubbleGeometry } from "../src/game/three/models";
+import { buildingDef, crateDef, instance, pileDef, podDef, uplinkDef, unitDef, unitScale, chuteGeometry, modelMesh, rubbleGeometry, TRACK } from "../src/game/three/models";
+import { GoliathRig, type GoliathPose } from "../src/game/three/goliath";
 import { baySeats, SquadRig, type BotKind } from "../src/game/three/infantry";
 import { setVariant } from "../src/game/three/materials";
+import { ModelBuilder } from "../src/game/three/builder";
 import { UNIT_KINDS, BUILDING_KINDS } from "../src/game/assets";
 import { UNITS } from "../src/sim/balance";
 
@@ -29,8 +38,9 @@ plate.position.set(9, 0, 2);
 plate.receiveShadow = true;
 stage.scene.add(plate);
 
-const facs = (q.get("faction") ?? "blue,red").split(",") as ("blue" | "red")[];
-const only = q.get("only");
+const icon = q.get("icon");
+const facs = (icon ? "blue" : q.get("faction") ?? "blue,red").split(",") as ("blue" | "red")[];
+const only = icon ? "icon" : q.get("only");
 const anim = q.get("anim") ?? "walk";
 const BOTS: BotKind[] = ["trooper", "rocket-squad", "sniper"];
 const AIR: string[] = ["scout", "wasp", "raptor", "hornet", "mender", "condor"];
@@ -61,7 +71,133 @@ function condor(f: "blue" | "red", x: number, y: number, z: number, load: BotKin
   stage.scene.add(c.root);
 }
 
+/** A Goliath rig at (x, z) facing `face` (rad, sim-style: clockwise from north), posed once. */
+function goliath(f: "blue" | "red", x: number, z: number, face: number, pose: Partial<GoliathPose> = {}, y = 0): GoliathRig {
+  const r = new GoliathRig(f);
+  r.root.scale.setScalar(unitScale("goliath"));
+  r.root.position.set(x, y, z);
+  r.root.rotation.y = -face;
+  r.update({ ...REST_POSE, ...pose });
+  stage.scene.add(r.root);
+  return r;
+}
+const REST_POSE: GoliathPose = { dt: 0, speed: 0, lower: 0, spikes: 0, unfold: 0, yaw: 0, pitch: 0, droop: 0, pods: 0, eye: 1, hang: 0, crane: 0, look: 0 };
+/** Walking Goliaths, animated by at(). */
+const walkers: { rig: GoliathRig; x: number }[] = [];
+/** A dark lift cable from a to b (the gallery's own: the game's live in render/goliath.ts). */
+function cableBetween(a: THREE.Vector3, b: THREE.Vector3): void {
+  const g = new ModelBuilder();
+  g.box(1, 1, 1, [0, 0.5, 0], TRACK);
+  const m = modelMesh(g.build(), false);
+  m.position.copy(a);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  m.scale.set(0.022, a.distanceTo(b), 0.022);
+  stage.scene.add(m);
+}
+
 facs.forEach((f, fi) => {
+  if (only === "icon") {
+    if (icon === "gantry") {
+      const g = instance(buildingDef("gantry", f));
+      for (let i = 0; i < 4; i++) g.parts[`stage${i}`]!.visible = i === 2;
+      g.parts.lightsOff!.visible = false;
+      g.parts.jib!.rotation.set(0, 2.11, 0, "YXZ");
+      g.parts.plate!.visible = false;
+      g.parts.hook!.position.set(0, -1.6, -1.5);
+      g.parts.cable!.position.set(0, 0, -1.5);
+      g.parts.cable!.scale.set(1, 1.6, 1);
+      stage.scene.add(g.root);
+    } else goliath(f, 0, 0, Math.PI, { yaw: 0 });
+    plate.visible = false;
+    stage.scene.background = new THREE.Color(q.get("bg") ?? "#000000");
+    return;
+  }
+  if (only === "goliath") {
+    const z = fi * 4.6;
+    const face = fi ? 0 : Math.PI;
+    // walking east along the row (animated), then the line-up
+    const w = goliath(f, 0, z, Math.PI / 2);
+    walkers.push({ rig: w, x: -3.2 });
+    goliath(f, 3.4, z, face);
+    goliath(f, 6.6, z, face, { lower: 0.55, spikes: 0.55, unfold: 0.15 });
+    goliath(f, 9.8, z, face, { lower: 1, spikes: 1, unfold: 1, crane: 0.4 });
+    goliath(f, 13.0, z, face, { droop: 1, pods: -0.45, eye: 0 });
+    goliath(f, 16.2, z, face, { droop: 0.4, pods: 0.3, eye: 1, yaw: 0.6 });
+    // lifted: hanging under two Condors on four cables
+    const hx = 19.6;
+    const lifted = goliath(f, hx, z, Math.PI / 2, { hang: 1 }, 0.55);
+    lifted.root.updateMatrixWorld(true);
+    const s = unitScale("condor");
+    for (let side = 0; side < 2; side++) {
+      const cz = z + (side ? 1.1 : -1.1);
+      const c = instance(unitDef("condor", f));
+      c.root.scale.setScalar(s);
+      c.root.position.set(hx, 0.55 + 2.55 * unitScale("goliath") + 0.5, cz);
+      c.body.rotation.y = -Math.PI / 2;
+      stage.scene.add(c.root);
+      for (const n of [-0.16, 0.16]) {
+        const a = lifted.point(side ? "shoulderR" : "shoulderL", [side ? 0.1 : -0.1, 0.24, n], new THREE.Vector3());
+        cableBetween(a, new THREE.Vector3(hx, c.root.position.y - 0.08, cz));
+      }
+    }
+    // toppled forward over its toes, burnt
+    const dead = goliath(f, 24.5, z, -Math.PI / 2, { droop: 1, pods: -0.45, eye: 0, lower: 0.5 });
+    const body = dead.j.body;
+    const pivot = new THREE.Vector3(0, 0, -0.5);
+    body.rotation.set(-(Math.PI / 2 - 0.1), 0, 0);
+    body.position.copy(pivot).sub(pivot.clone().applyEuler(body.rotation));
+    setVariant(dead.root, "burnt");
+    for (let i = 0; i < 4; i++) {
+      const p = modelMesh(pileDef(f, i).hull);
+      p.position.set(27 + (i % 2) * 1.1, 0, z - 1 + Math.floor(i / 2) * 1.6);
+      stage.scene.add(p);
+    }
+    // in love
+    goliath(f, 31, z, face, { love: 1, hug: 1, nod: -0.1 });
+    // for scale
+    const ti = instance(unitDef("mastodon", f));
+    ti.root.scale.setScalar(unitScale("mastodon"));
+    ti.body.rotation.y = -0.5;
+    ti.root.position.set(34, 0, z);
+    stage.scene.add(ti.root);
+    const hq = instance(buildingDef("hq", f));
+    hq.root.position.set(37, 0, z);
+    stage.scene.add(hq.root);
+    return;
+  }
+  if (only === "gantry") {
+    const z = fi * 4.2;
+    for (let i = 0; i < 6; i++) {
+      const g = instance(buildingDef("gantry", f));
+      const x = i * 3.6;
+      g.root.position.set(x, 0, z);
+      stage.scene.add(g.root);
+      const P = g.parts;
+      const building = i >= 1 && i <= 4;
+      for (let k = 0; k < 4; k++) P[`stage${k}`]!.visible = k === i - 1;
+      P.lightsOn!.visible = i >= 1;
+      P.lightsOff!.visible = i < 1;
+      P.blink!.visible = i === 4 || i === 5;
+      const working = i >= 1 && i <= 3;
+      P.jib!.rotation.set(working ? 0 : 0.03, working ? (i === 1 ? 0.72 : 2.11) : Math.PI, 0, "YXZ");
+      P.cable!.visible = P.hook!.visible = P.plate!.visible = working;
+      const r = i === 1 ? 0.53 : 1.51;
+      const drop = i === 1 ? 2.6 : 1.1;
+      P.cable!.position.set(0, 0, -r);
+      P.cable!.scale.set(1, drop, 1);
+      P.hook!.position.set(0, -drop, -r);
+      if (i === 5) {
+        // rollout: the arms swung clear, the finished Goliath stepping off the cradle
+        P.armL!.rotation.y = P.armR!.rotation.y = 1.45;
+        goliath(f, x, z + (f === "red" ? -1.2 : 1.2), f === "red" ? 0 : Math.PI, {}, 0.1);
+      }
+      if (building && i <= 3) {
+        P.armL!.rotation.y = 0.1;
+        P.armR!.rotation.y = -0.1;
+      }
+    }
+    return;
+  }
   if (only === "condor-ring") {
     // every heading, loaded, ramp up and down by turns
     for (let i = 0; i < 6; i++) condor(f, i * 2.1, 1.35, fi * 2.4, i % 3 ? ["trooper", "rocket-squad"] : ["sniper", "trooper"], i % 2, (-i * Math.PI) / 3);
@@ -72,8 +208,8 @@ facs.forEach((f, fi) => {
     condor(f, 0, 0.62, z, fi ? ["sniper", "trooper"] : ["trooper", "rocket-squad"], 1);
     condor(f, 2.4, 1.35, z, fi ? ["rocket-squad", "trooper"] : ["trooper", "sniper"], 0);
     condor(f, 4.8, 1.35, z, [], 0);
-    const ti = instance(unitDef("titan", f));
-    ti.root.scale.setScalar(unitScale("titan"));
+    const ti = instance(unitDef("mastodon", f));
+    ti.root.scale.setScalar(unitScale("mastodon"));
     ti.body.rotation.y = cface;
     ti.root.position.set(7.1, 0, z);
     stage.scene.add(ti.root);
@@ -123,7 +259,7 @@ facs.forEach((f, fi) => {
       stage.scene.add(inst.root);
     });
 });
-if (!only?.startsWith("condor")) {
+if (!only?.startsWith("condor") && only !== "goliath" && only !== "gantry" && only !== "icon") {
   const extras = [instance(uplinkDef()), instance(crateDef()), instance(podDef("blue")), instance(podDef("blue", true))];
   extras.forEach((e, i) => {
     e.root.position.set(-4, 0, -1 + i * 2.4);
@@ -135,7 +271,7 @@ if (!only?.startsWith("condor")) {
   const rub = modelMesh(rubbleGeometry(2, 1));
   rub.position.set(-6.5, 0, 5.5);
   stage.scene.add(rub);
-  const wreck = instance(unitDef("titan", "blue"));
+  const wreck = instance(unitDef("mastodon", "blue"));
   setVariant(wreck.root, "burnt");
   wreck.root.position.set(-6.5, 0, -1);
   stage.scene.add(wreck.root);
@@ -160,6 +296,11 @@ function at(t: number): void {
       y.rig.update({ dt, speed, aim: anim === "aim" ? 1 : 0, pitch: 0, alive });
     }
     for (const r of riders) r.rig.update({ dt, speed: 0, aim: 0, pitch: 0, alive: r.rig.spec.n, ready: r.ready });
+    // Goliaths walking east along their row, round and round
+    for (const g of walkers) {
+      g.rig.root.position.x = g.x + ((now / 1000) * 1.0) % 3;
+      g.rig.update({ ...REST_POSE, dt, speed: 1, ground: () => 0 });
+    }
   }
 }
 const freeze = q.get("t");
@@ -169,7 +310,9 @@ stage.rig.bounds = { x0: -100, y0: -100, x1: 100, y1: 100 };
 const pitch = q.get("pitch");
 if (pitch !== null) stage.rig.pitchFor = () => THREE.MathUtils.degToRad(Number(pitch));
 stage.rig.zoom = Number(q.get("zoom") ?? 46);
-stage.rig.centerOn(Number(q.get("x") ?? 7), Number(q.get("y") ?? 4));
+// (the Goliath and Gantry line-ups open centred on themselves; an icon on the model)
+const home = only === "goliath" ? [16, 2] : only === "gantry" ? [9, 1.5] : only === "icon" ? [0, 0] : [7, 4];
+stage.rig.centerOn(Number(q.get("x") ?? home[0]), Number(q.get("y") ?? home[1]));
 let last = performance.now();
 const loop = () => {
   const t = performance.now();

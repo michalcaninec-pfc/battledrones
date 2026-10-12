@@ -10,9 +10,11 @@
  */
 import { BUILDINGS, TICK_RATE, UNITS } from "../sim/balance";
 import { isVisible } from "../sim/fog";
-import type { Faction, FxEvent, PowerKind, UnitKind, World } from "../sim/types";
+import { goliathsOf } from "../sim/goliath";
+import type { Faction, FxEvent, GoliathWeapon, PowerKind, UnitKind, World } from "../sim/types";
+import { hqOf } from "../sim/world";
 import type { Announcement, AnnounceTone } from "./announce";
-import { calldownThreatens } from "./awareness";
+import { baseGoliath, calldownThreatens } from "./awareness";
 import { CalldownCredit, powerName, powerPhrase, type CalldownKill } from "./calldown-credit";
 
 /** A line for the radio announcer. */
@@ -65,7 +67,24 @@ export const CALLOUTS = {
     /** Our Condor put its squads down / one of ours went down (bail-out or lost with them) / the enemy lands troops. */
     "troops-deployed": 20,
     "condor-down": 10,
-    "enemy-drop": 20
+    "enemy-drop": 20,
+    // Goliaths (GOLIATH.md): a Gantry's build is public news, and so is everything a Goliath does
+    "enemy-goliath-build": 20,
+    "enemy-goliath-soon": 20,
+    "enemy-goliath": 10,
+    "goliath-ready": 10,
+    "goliath-attack": 30,
+    /** Our Goliath hit where the player can already see it (only said for a base or the last life). */
+    "goliath-attack-seen": 60,
+    "enemy-goliath-dig": 20,
+    "enemy-goliath-pack": 30,
+    "goliath-anchored": 15,
+    /** Each weapon system's own line, per side and direction ("enemy-goliath-mortars", "goliath-laser-down"…). */
+    "goliath-weapon": 20,
+    "goliath-airborne": 20,
+    "enemy-goliath-airborne": 20,
+    "goliath-dropped": 10,
+    "enemy-goliath-dropped": 10
   } as Record<string, number>,
   /**
    * An enemy calldown aimed at our units or buildings (the siren's
@@ -103,6 +122,13 @@ export const CALLOUTS = {
   killBannerGapS: 6,
   /** …except a streak climbing to a higher tier, which only needs this. */
   escalateGapS: 2,
+  /**
+   * At most this many banners in any 60 s: past it, flavour kill banners
+   * (streaks, big kills: priority 2 and 3) are dropped, while news (an HQ
+   * falling, a Goliath on the field) always shows. A Goliath racking up
+   * kills fed streak banners faster than the pleasantness budget allows.
+   */
+  bannersPerMinute: 6,
   /** Losing a unit worth this much (or a rank-2 veteran) gets a radio line. */
   bigLossValue: 350
 } as const;
@@ -123,6 +149,16 @@ const SIDE: Record<Faction, string> = { blue: "Blue", red: "Red" };
 /** Shorter names where a banner must fit a phone ("ELITE FLAK DOWN"). */
 const SHORT: Partial<Record<UnitKind, string>> = { "flak-crawler": "Flak" };
 const enemyOf = (f: Faction): Faction => (f === "blue" ? "red" : "blue");
+
+/** The Goliath's counters, as its rollout banner names them (GOLIATH.md tunes it against these). */
+export const GOLIATH_COUNTERS = "Rocket Squads, Wasps, Lancers, Hornets";
+/** Spoken names of the weapon systems a Goliath can lose (the machine guns never go offline). */
+const GOLIATH_WORD: Partial<Record<GoliathWeapon, string>> = { mortars: "mortars", laser: "laser", cannons: "cannons" };
+/** "mortars", "mortars and laser", "mortars, laser and cannons". */
+const listWords = (xs: readonly string[]): string =>
+  xs.length <= 1 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+/** "The Goliath fights on" / "The Goliaths fight on". */
+const fightsOn = (n: number): string => (n > 1 ? "Goliaths fight on" : "Goliath fights on");
 
 interface Streak {
   /** Sim times of kills inside the window… */
@@ -156,6 +192,8 @@ export class BattleCallouts {
   private credit: CalldownCredit;
   private firstBlood = false;
   private lastKillBanner = -Infinity;
+  /** When each banner went up (CALLOUTS.bannersPerMinute). */
+  private shown: number[] = [];
   private lastBigKill = -Infinity;
   private wasReady = false;
   private airSeen: Record<Faction, number> = { blue: -Infinity, red: -Infinity };
@@ -167,6 +205,10 @@ export class BattleCallouts {
   private aboard = new Map<number, number>();
   /** Squads already aboard when the match began (the island map) have been counted. */
   private seeded = false;
+  /** Each Goliath's weapon systems as last announced, so a reboot knocked back down isn't "down" twice. */
+  private weaponState = new Map<number, Partial<Record<GoliathWeapon, "online" | "offline">>>();
+  /** Goliaths whose lift just dropped them to their death: their death says "lost in the drop". */
+  private droppedDead = new Set<number>();
   private ended = false;
   /** Lines and banners raised, by key (debug/measurement). */
   readonly counts = new Map<string, number>();
@@ -179,14 +221,22 @@ export class BattleCallouts {
   events(fx: readonly FxEvent[], t: number): void {
     if (this.ended) return;
     this.transport(fx, t); // (first: a Condor lost with its squads says so instead of "Squad lost")
+    let weapons: Extract<FxEvent, { type: "goliathWeapon" }>[] | null = null;
     for (const ev of fx) {
       const by = this.credit.see(ev);
       if (ev.type === "hit") this.hit(ev, t);
       else if (ev.type === "death") this.death(ev, t, by);
       else if (ev.type === "rankUp") this.rankUp(ev.id, t);
       else if (ev.type === "calldown") this.calldown(ev, t);
+      // Goliaths and Gantries are always visible to the enemy: their news needs no fog check
+      else if (ev.type === "goliathBuild") this.goliathBuild(ev, t);
+      else if (ev.type === "goliathRollout") this.goliathRollout(ev, t);
+      else if (ev.type === "goliathMode") this.goliathMode(ev, t);
+      else if (ev.type === "goliathLift") this.goliathLift(ev, t);
+      else if (ev.type === "goliathWeapon") (weapons ??= []).push(ev); // (one line for systems lost together)
     }
-    this.poll(t);
+    if (weapons) this.goliathWeapons(weapons, t);
+    this.poll(t, fx);
   }
 
   /**
@@ -223,9 +273,26 @@ export class BattleCallouts {
   }
 
   private banner(a: Announcement, t: number): void {
+    // (a busy minute keeps its headlines and drops the flavour)
+    if ((a.priority ?? 2) >= 2 && this.bannersWithin(t) >= CALLOUTS.bannersPerMinute) return;
     this.lastKillBanner = t;
     this.counts.set(a.key, (this.counts.get(a.key) ?? 0) + 1);
+    this.shown.push(t);
     this.h.announce(a);
+  }
+
+  /** A banner that is news, not a kill: it starts its cooldown but doesn't hold back the next kill banner. */
+  private raise(a: Announcement, t: number, cdKey = a.key): void {
+    this.last.set(cdKey, t);
+    this.counts.set(a.key, (this.counts.get(a.key) ?? 0) + 1);
+    this.shown.push(t);
+    this.h.announce(a);
+  }
+
+  /** Banners shown in the 60 s up to `t` (older ones are forgotten). */
+  private bannersWithin(t: number): number {
+    while (this.shown.length > 0 && t - this.shown[0]! >= 60) this.shown.shift();
+    return this.shown.length;
   }
 
   // -------------------------------------------------------------- events --
@@ -256,9 +323,42 @@ export class BattleCallouts {
         this.say({ key: "base-attack", text: "Our base is under attack", priority: 1, tone: "bad", x: ev.x, y: ev.y, caption: false }, t);
       return;
     }
+    const g = h.world.units.get(ev.id);
+    if (g?.goliath) {
+      this.goliathHit(ev, t);
+      return;
+    }
     if (h.spectator || ev.faction !== h.player || h.onScreen(ev.x, ev.y) || t < this.strikeQuietUntil) return;
     if (this.ready("units-attack", t) && this.ready("squad-lost", t, 10))
       this.say({ key: "units-attack", text: "Our units are under fire", priority: 2, tone: "bad", x: ev.x, y: ev.y, caption: false }, t);
+  }
+
+  /**
+   * A Goliath under fire: "Our Goliath is under attack" off screen (on
+   * screen too while it is our base or our last life), at P0 when it is the
+   * last life — no HQ (fallen, or never built: Nomads) and no other Goliath —
+   * since losing it loses the match. Spectators hear about a side's last life only.
+   */
+  private goliathHit(ev: Extract<FxEvent, { type: "hit" }>, t: number): void {
+    const h = this.h;
+    const w = h.world;
+    const last = !hqOf(w, ev.faction) && goliathsOf(w, ev.faction).length <= 1;
+    if (h.spectator) {
+      const key = `goliath-attack-${ev.faction}`;
+      if (last && this.ready(key, t, 40))
+        this.say({ key, text: `${SIDE[ev.faction]} Goliath under attack`, priority: 1, tone: "bad", x: ev.x, y: ev.y, caption: true }, t);
+      return;
+    }
+    if (ev.faction !== h.player) return;
+    const g = w.units.get(ev.id)!;
+    const seen = h.onScreen(ev.x, ev.y);
+    // a walking Goliath fighting where the player is looking is no news
+    if (seen && !baseGoliath(w, g)) return;
+    const cd = CALLOUTS.cooldownS[seen ? "goliath-attack-seen" : "goliath-attack"];
+    if (!this.ready("goliath-attack", t, cd)) return;
+    // (the HUD's own "under attack" toast shows it: no caption)
+    this.say({ key: "goliath-attack", text: "Our Goliath is under attack", priority: last ? 0 : 1, tone: "bad", x: ev.x, y: ev.y, caption: false }, t);
+    this.last.set("units-attack", t);
   }
 
   private death(ev: Extract<FxEvent, { type: "death" }>, t: number, by: CalldownKill | null): void {
@@ -266,7 +366,10 @@ export class BattleCallouts {
     const victim = ev.faction;
     const killer = enemyOf(victim);
     if (ev.buildingKind) {
-      if (ev.buildingKind === "hq") return; // the winner line covers it
+      if (ev.buildingKind === "hq") {
+        this.hqFell(ev, t, by);
+        return;
+      }
       const name = BUILDINGS[ev.buildingKind].name;
       if (by && !h.spectator && killer === h.player) {
         // our strike flattened a building: worth a cheer, not just a radio line —
@@ -300,8 +403,63 @@ export class BattleCallouts {
     }
     const kind = ev.unitKind;
     if (!kind) return;
+    if (kind === "goliath") this.weaponState.delete(ev.id);
     if (h.spectator || killer === h.player) this.kill(ev, killer, t, by?.power ?? null);
-    if (!h.spectator && victim === h.player) this.loss(ev, t);
+    // (a Goliath is always said, on screen or off, and never folded into "Squad lost")
+    if (!h.spectator && victim === h.player) {
+      if (kind === "goliath") this.goliathLost(ev, t);
+      else this.loss(ev, t);
+    }
+    this.droppedDead.delete(ev.id);
+  }
+
+  /**
+   * An HQ fell. When that decides the match the winner line says it; when a
+   * Goliath fights on (GOLIATH.md: a side is beaten only once its HQ and all
+   * its Goliaths are gone), it is a banner: ours a P0 warning, theirs a
+   * cheer that names what is left to win.
+   */
+  private hqFell(ev: Extract<FxEvent, { type: "death" }>, t: number, by: CalldownKill | null): void {
+    const h = this.h;
+    const w = h.world;
+    if (w.winner) return; // the winner line covers it
+    const f = ev.faction;
+    const n = goliathsOf(w, f).length;
+    if (h.spectator)
+      this.raise({ key: `hq-fell-${f}`, text: `${SIDE[f]} HQ destroyed`, sub: `${SIDE[f]}'s ${fightsOn(n)}`, tone: "epic", priority: 1, x: ev.x, y: ev.y }, t);
+    else if (f === h.player)
+      this.raise({ key: "hq-fell", text: "Our HQ has fallen", sub: `The ${fightsOn(n)}`, tone: "bad", priority: 0, x: ev.x, y: ev.y }, t);
+    else {
+      // our kill: a banner like any other big kill (it spaces out the streak banners after it)
+      this.last.set("enemy-hq-fell", t);
+      this.banner(
+        {
+          key: "enemy-hq-fell", text: "Enemy HQ destroyed", sub: `Destroy their ${n > 1 ? "Goliaths" : "Goliath"} to win`, tone: "epic", priority: 1,
+          x: ev.x, y: ev.y, ...(by ? { say: `Enemy HQ destroyed by ${powerPhrase(by.power)}` } : {})
+        },
+        t
+      );
+    }
+  }
+
+  /** Our Goliath went down: a P1 banner (P0 once the HQ is gone and the rest of our Goliaths are all that's left). */
+  private goliathLost(ev: Extract<FxEvent, { type: "death" }>, t: number): void {
+    const h = this.h;
+    const w = h.world;
+    const dropped = this.droppedDead.has(ev.id);
+    this.last.set("unit-lost", t); // (no "Goliath lost" radio line on top)
+    if (w.winner) return; // our last one: the defeat line says it
+    const last = !hqOf(w, h.player);
+    const left = goliathsOf(w, h.player).length;
+    const parts = [dropped ? "Lost in the drop" : null, last && left > 0 ? (left === 1 ? "Our last Goliath fights on" : `${left} Goliaths left`) : null];
+    const sub = parts.filter((x): x is string => !!x).join(" · ");
+    this.raise(
+      {
+        key: "goliath-lost", text: "Goliath lost", tone: "bad", priority: last ? 0 : 1, x: ev.x, y: ev.y,
+        ...(sub ? { sub } : {}), ...(dropped ? { say: "Goliath lost in the drop" } : {})
+      },
+      t
+    );
   }
 
   /** One of ours died: squad losses, harvesters and expensive hulls. */
@@ -361,13 +519,17 @@ export class BattleCallouts {
       if (!s.pending) s.pendingAt = t;
       s.pending = tier;
     }
+    if (ev.unitKind === "goliath") {
+      this.goliathKill(ev, killer, t, power);
+      return;
+    }
     const big = ev.value >= CALLOUTS.bigKillValue || ev.rank >= 3;
     if (big) {
       const label = `${ev.rank >= 3 ? "Elite " : ""}${SHORT[ev.unitKind!] ?? name}`;
       if (s.pending) s.big = `${label} destroyed`; // rides along under the streak banner
       else if (t - this.lastBigKill >= CALLOUTS.bigKillCooldownS && t - this.lastKillBanner >= CALLOUTS.killBannerGapS) {
         this.lastBigKill = t;
-        // short on the banner ("TITAN DOWN" fits a phone), complete on the radio
+        // short on the banner ("MASTODON DOWN" fits a phone), complete on the radio
         const how = power ? ` by ${powerPhrase(power)}` : "";
         this.banner(
           h.spectator
@@ -382,6 +544,39 @@ export class BattleCallouts {
     }
   }
 
+  /**
+   * A Goliath destroyed: always its own epic banner, never held back by the
+   * big-kill cooldowns nor folded under a streak (a streak it ends gives way
+   * to it). It names what is left when the HQ is already gone. The blow that
+   * decides the match is left to the winner line and the finale.
+   */
+  private goliathKill(ev: Extract<FxEvent, { type: "death" }>, killer: Faction, t: number, power: PowerKind | null): void {
+    const h = this.h;
+    const w = h.world;
+    if (w.winner) return;
+    this.lastBigKill = t;
+    const victim = ev.faction;
+    const label = ev.rank >= 3 ? "Elite Goliath" : "Goliath";
+    const left = goliathsOf(w, victim).length;
+    const leftNote = hqOf(w, victim) || left === 0 ? null : left === 1 ? "One Goliath left" : `${left} Goliaths left`;
+    const dropped = this.droppedDead.has(ev.id) ? "Dropped from its lift" : null;
+    const parts = (xs: (string | null)[]) => xs.filter((x): x is string => !!x).join(" · ");
+    if (h.spectator) {
+      const sub = parts([`${SIDE[killer]} scores`, power ? powerName(power) : dropped, leftNote]);
+      this.banner({ key: "kill-goliath", text: `${SIDE[victim]} ${label} down`, sub, tone: "epic", priority: 1, x: ev.x, y: ev.y }, t);
+      return;
+    }
+    const sub = parts([power ? powerName(power) : dropped, leftNote]);
+    const how = power ? ` by ${powerPhrase(power)}` : "";
+    this.banner(
+      {
+        key: "kill-goliath", text: `${label} down`, say: `Enemy ${label} destroyed${how}`, tone: "epic", priority: 1, x: ev.x, y: ev.y,
+        ...(sub ? { sub } : {})
+      },
+      t
+    );
+  }
+
   private rankUp(id: number, t: number): void {
     const h = this.h;
     if (h.spectator) return;
@@ -393,7 +588,7 @@ export class BattleCallouts {
 
   // ---------------------------------------------------------------- poll --
 
-  private poll(t: number): void {
+  private poll(t: number, fx: readonly FxEvent[] = []): void {
     const h = this.h;
     const w = h.world;
     if (w.winner) {
@@ -401,16 +596,27 @@ export class BattleCallouts {
       // an op that ends on its objective is narrated by its own op-complete /
       // op-failed banner (spoken like any banner), so say nothing over it
       if (w.ops?.result?.byGoal) return;
-      if (w.survival) {
-        // (watched or played, Last Stand only ends one way: matches the banner and the lament)
-        this.say({ key: "defeat", text: "Base overrun. The HQ has fallen.", priority: 0, tone: "bad", caption: false }, t);
+      if (w.winner === "draw") {
+        // Robot Love (rules.ts): two enemy Goliaths met and fell in love. Nobody won and nobody lost,
+        // for players and spectators alike: its own last word, never a victory or a defeat
+        const text = w.love ? "They fell in love. The battle is a draw." : "The battle is a draw.";
+        this.say({ key: "draw", text, priority: 0, tone: "good", caption: false, ...(w.love ? { x: w.love.x, y: w.love.y } : {}) }, t);
         return;
       }
+      // what fell last: the HQ, or (the HQ long gone, or never there: Nomads) the last Goliath — the finale banner words it the same way
+      const byGoliath = decidedByGoliath(fx, enemyOf(w.winner));
+      if (w.survival) {
+        // (watched or played, Last Stand only ends one way: matches the banner and the lament)
+        const text = byGoliath ? "Base overrun. The last Goliath has fallen." : "Base overrun. The HQ has fallen.";
+        this.say({ key: "defeat", text, priority: 0, tone: "bad", caption: false }, t);
+        return;
+      }
+      const loser = SIDE[enemyOf(w.winner)];
       const text = h.spectator
-        ? `${SIDE[w.winner]} wins the battle`
+        ? `${byGoliath ? `${loser}'s last Goliath destroyed. ` : ""}${SIDE[w.winner]} wins the battle`
         : w.winner === h.player
-          ? "Enemy HQ destroyed. Victory!"
-          : "Our HQ has fallen. Mission failed."
+          ? byGoliath ? "Last enemy Goliath destroyed. Victory!" : "Enemy HQ destroyed. Victory!"
+          : byGoliath ? "Our last Goliath has fallen. Mission failed." : "Our HQ has fallen. Mission failed.";
       this.say({ key: w.winner === h.player || h.spectator ? "victory" : "defeat", text, priority: 0, tone: w.winner === h.player || h.spectator ? "epic" : "bad", caption: false }, t);
       return;
     }
@@ -550,6 +756,157 @@ export class BattleCallouts {
     this.say({ key: line.key, text: line.text, priority: 1, tone: "bad", x: ev.x, y: ev.y, caption: false, staleS: line.staleS }, t);
   }
 
+  // ------------------------------------------------------------ goliaths --
+  // (A Gantry and its Goliath are always visible to the enemy, so all of this is public news.)
+
+  /**
+   * A Gantry starts a Goliath, or nears the end of one: the enemy's is a
+   * warning banner, then a P1 radio line so "nearly complete" is heard over
+   * any chatter. Ours needs no line: the queue shows it, "Goliath ready" says when.
+   */
+  private goliathBuild(ev: Extract<FxEvent, { type: "goliathBuild" }>, t: number): void {
+    const h = this.h;
+    const f = ev.faction;
+    const started = ev.stage === "started";
+    if (h.spectator) {
+      const key = `${started ? "goliath-build" : "goliath-soon"}-${f}`;
+      if (this.ready(key, t, 20))
+        this.say(
+          { key, text: `${SIDE[f]} Goliath ${started ? "in production" : "nearly complete"}`, priority: started ? 2 : 3, tone: "info", x: ev.x, y: ev.y, caption: true },
+          t
+        );
+      return;
+    }
+    if (f === h.player) return;
+    if (started) {
+      if (this.ready("enemy-goliath-build", t))
+        this.raise({ key: "enemy-goliath-build", text: "Enemy Goliath in production", sub: "Their Gantry has started one", tone: "bad", priority: 1, x: ev.x, y: ev.y }, t);
+    } else if (this.ready("enemy-goliath-soon", t))
+      this.say({ key: "enemy-goliath-soon", text: "Enemy Goliath nearly complete", priority: 1, tone: "bad", x: ev.x, y: ev.y, caption: true, staleS: 6 }, t);
+  }
+
+  /**
+   * A Goliath walks off its Gantry: theirs a warning banner naming its
+   * counters; ours a radio line (P1, so it's heard: the player paid for it,
+   * and it reports in itself, voices.ts), keeping the banners for the news
+   * the player didn't make.
+   */
+  private goliathRollout(ev: Extract<FxEvent, { type: "goliathRollout" }>, t: number): void {
+    const h = this.h;
+    const f = ev.faction;
+    if (h.spectator) {
+      const key = `goliath-field-${f}`;
+      if (this.ready(key, t, 10)) this.raise({ key, text: `${SIDE[f]} Goliath on the field`, tone: "epic", priority: 2, x: ev.x, y: ev.y }, t);
+    } else if (f === h.player) {
+      if (this.ready("goliath-ready", t))
+        this.say({ key: "goliath-ready", text: "Goliath ready", priority: 1, tone: "good", x: ev.x, y: ev.y, caption: true }, t);
+    } else if (this.ready("enemy-goliath", t))
+      this.raise({ key: "enemy-goliath", text: "Enemy Goliath on the field", sub: `Counter: ${GOLIATH_COUNTERS}`, tone: "bad", priority: 1, x: ev.x, y: ev.y }, t);
+  }
+
+  /**
+   * Walking ⇄ anchored: an enemy Goliath digging in (a base going up, maybe
+   * on our doorstep) or packing up (the moment it's vulnerable); ours
+   * anchored, captioned only when it happened off screen.
+   */
+  private goliathMode(ev: Extract<FxEvent, { type: "goliathMode" }>, t: number): void {
+    const h = this.h;
+    const f = ev.faction;
+    if (h.spectator) {
+      const key = `goliath-dig-${f}`;
+      if (ev.mode === "anchoring" && this.ready(key, t, 20))
+        this.say({ key, text: `${SIDE[f]} Goliath digging in`, priority: 2, tone: "info", x: ev.x, y: ev.y, caption: true }, t);
+      return;
+    }
+    if (f === h.player) {
+      if (ev.mode === "anchored" && this.ready("goliath-anchored", t))
+        this.say({ key: "goliath-anchored", text: "Goliath anchored", priority: 3, tone: "good", x: ev.x, y: ev.y, caption: !h.onScreen(ev.x, ev.y) }, t);
+      return;
+    }
+    if (ev.mode === "anchoring" && this.ready("enemy-goliath-dig", t))
+      this.say({ key: "enemy-goliath-dig", text: "Enemy Goliath digging in", priority: 2, tone: "bad", x: ev.x, y: ev.y, caption: true }, t);
+    else if (ev.mode === "packing" && this.ready("enemy-goliath-pack", t))
+      this.say({ key: "enemy-goliath-pack", text: "Enemy Goliath packing up", priority: 3, tone: "info", x: ev.x, y: ev.y, caption: true }, t);
+  }
+
+  /**
+   * Weapon systems going offline (damage) or back online (repaired), one
+   * line per Goliath and direction this tick ("Enemy Goliath: mortars and
+   * laser down!"). Each system has its own key, so "mortars down" waiting in
+   * the queue isn't overwritten by "laser down"; a reboot knocked back down
+   * is not news (it never came back).
+   */
+  private goliathWeapons(list: readonly Extract<FxEvent, { type: "goliathWeapon" }>[], t: number): void {
+    const h = this.h;
+    if (h.world.winner) return;
+    const news = new Map<string, { ev: (typeof list)[number]; weapons: GoliathWeapon[] }>();
+    for (const ev of list) {
+      if (ev.state === "rebooting" || !GOLIATH_WORD[ev.weapon]) continue;
+      let st = this.weaponState.get(ev.id);
+      if (!st) this.weaponState.set(ev.id, (st = {}));
+      if ((st[ev.weapon] ?? "online") === ev.state) continue;
+      st[ev.weapon] = ev.state;
+      const k = `${ev.id}:${ev.state}`;
+      const n = news.get(k);
+      if (n) n.weapons.push(ev.weapon);
+      else news.set(k, { ev, weapons: [ev.weapon] });
+    }
+    const cd = CALLOUTS.cooldownS["goliath-weapon"];
+    for (const { ev, weapons } of news.values()) {
+      const f = ev.faction;
+      const down = ev.state === "offline";
+      const mine = !h.spectator && f === h.player;
+      // each system's own key and cooldown, per side and direction
+      const keyOf = (k: GoliathWeapon) =>
+        h.spectator ? `goliath-${k}-${f}` : mine ? `goliath-${k}-${down ? "down" : "up"}` : `enemy-goliath-${k}${down ? "" : "-up"}`;
+      if (h.spectator && !down) continue; // (casters call the losses)
+      const fresh = weapons.filter((k) => this.ready(keyOf(k), t, cd));
+      if (fresh.length === 0) continue;
+      for (const k of fresh) this.last.set(keyOf(k), t);
+      const what = listWords(fresh.map((k) => GOLIATH_WORD[k]!));
+      const key = fresh.map(keyOf).join("+");
+      const at = { x: ev.x, y: ev.y };
+      if (h.spectator) this.say({ key, text: `${SIDE[f]} Goliath: ${what} down`, priority: 2, tone: "info", ...at, caption: true }, t);
+      else if (mine && down) this.say({ key, text: `Goliath ${what} offline`, priority: 1, tone: "bad", ...at, caption: true }, t);
+      else if (mine) this.say({ key, text: `Goliath ${what} back online`, priority: 3, tone: "good", ...at, caption: !h.onScreen(ev.x, ev.y) }, t);
+      else if (down) this.say({ key, text: `Enemy Goliath: ${what} down!`, priority: 2, tone: "good", ...at, caption: true }, t);
+      else this.say({ key, text: `Enemy Goliath ${what} back online`, priority: 2, tone: "bad", ...at, caption: true }, t);
+    }
+  }
+
+  /**
+   * Two Condors carrying a Goliath: airborne, and dropped when a Condor is
+   * shot down (one dropped to its death is announced by its death: "lost in
+   * the drop"). A planned set-down is no news.
+   */
+  private goliathLift(ev: Extract<FxEvent, { type: "goliathLift" }>, t: number): void {
+    const h = this.h;
+    const f = ev.faction;
+    if (ev.state === "setDown") return;
+    if (ev.state === "dropped" && ev.destroyed) {
+      this.droppedDead.add(ev.id);
+      return;
+    }
+    const hooked = ev.state === "hooked";
+    const at = { x: ev.x, y: ev.y };
+    if (h.spectator) {
+      const key = `goliath-${hooked ? "airborne" : "dropped"}-${f}`;
+      if (this.ready(key, t, 20)) this.say({ key, text: `${SIDE[f]} Goliath ${hooked ? "airborne" : "dropped!"}`, priority: 2, tone: "info", ...at, caption: true }, t);
+      return;
+    }
+    if (f === h.player) {
+      if (hooked && this.ready("goliath-airborne", t))
+        this.say({ key: "goliath-airborne", text: "Goliath airborne", priority: 3, tone: "good", ...at, caption: !h.onScreen(ev.x, ev.y) }, t);
+      else if (!hooked && this.ready("goliath-dropped", t))
+        this.say({ key: "goliath-dropped", text: "Goliath dropped!", priority: 1, tone: "bad", ...at, caption: true }, t);
+      return;
+    }
+    if (hooked && this.ready("enemy-goliath-airborne", t))
+      this.say({ key: "enemy-goliath-airborne", text: "Enemy Goliath airborne", priority: 2, tone: "bad", ...at, caption: true }, t);
+    else if (!hooked && this.ready("enemy-goliath-dropped", t))
+      this.say({ key: "enemy-goliath-dropped", text: "Enemy Goliath dropped!", priority: 2, tone: "good", ...at, caption: true }, t);
+  }
+
   /** "Enemy aircraft detected": the first visible enemy combat aircraft (re-armed after a long absence). */
   private scanAir(t: number): void {
     const h = this.h;
@@ -576,6 +933,23 @@ export class BattleCallouts {
       } else if (t - this.airSeen[f] > CALLOUTS.airRearmS) this.airArmed[f] = true;
     }
   }
+}
+
+/**
+ * Did the deciding tick's deaths end it with `loser`'s last Goliath rather
+ * than its HQ? (A side is beaten when its HQ falls with no Goliath left, or
+ * its last Goliath falls with the HQ long gone; when both go in one tick the
+ * HQ is what fell last.) The radio's winner line and the finale banner word
+ * the end by it.
+ */
+export function decidedByGoliath(fx: readonly FxEvent[], loser: Faction): boolean {
+  let goliath = false;
+  for (const ev of fx) {
+    if (ev.type !== "death" || ev.faction !== loser) continue;
+    if (ev.buildingKind === "hq") return false;
+    if (ev.unitKind === "goliath") goliath = true;
+  }
+  return goliath;
 }
 
 /**
@@ -672,6 +1046,9 @@ export class RadioQueue {
     this.items = [];
   }
 }
+
+/** The match's last word (victory, defeat, or a draw): the announcer clears the queue for it and then falls silent. */
+export const isEndLine = (line: Pick<RadioLine, "key">): boolean => line.key === "victory" || line.key === "defeat" || line.key === "draw";
 
 /**
  * Make banner text speakable: drop emoji and symbols, turn SHOUTED banner

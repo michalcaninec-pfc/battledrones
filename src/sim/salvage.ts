@@ -1,9 +1,10 @@
-import { SALVAGE, TICK_RATE, UNITS } from "./balance";
+import { BUILDINGS, GOLIATH, SALVAGE, TICK_RATE, UNITS } from "./balance";
 import { isInfantry } from "./infantry";
-import type { Faction, Unit, World, Wreck } from "./types";
+import type { Building, Faction, Unit, World, Wreck } from "./types";
 import { incomeOf } from "./rules";
-import { buildingAtTile, groundPassable } from "./world";
-import { hypot } from "./fmath";
+import { worldRandom } from "./rand";
+import { buildingAtTile, buildingCenter, domainOf, groundPassable, sideFrame } from "./world";
+import { cos, hypot, sin } from "./fmath";
 
 /**
  * Battlefield salvage. A destroyed combat unit leaves a burning wreck worth
@@ -39,10 +40,15 @@ export function wreckShareOf(w: World, faction: Faction): number {
  * `SALVAGE.shiftRadius` (aircraft over rock, a Lancer sinking near the bank,
  * a drone crashing onto a building), else null (lost in the lava).
  */
-export function wreckRestingSpot(w: World, x: number, y: number): { x: number; y: number } | null {
-  const tx = Math.floor(x);
-  const ty = Math.floor(y);
-  if (groundPassable(w, tx, ty)) return { x, y };
+export function wreckRestingSpot(w: World, x: number, y: number, faction?: Faction): { x: number; y: number } | null {
+  // (with a faction, scanned in its side's frame, so mirror-image falls rest as mirror images: a
+  // Goliath dropped onto a building, lift.ts; without one, the world's frame as wrecks always were)
+  const fr = sideFrame(w, faction);
+  const p = fr.pt({ x, y });
+  const pass = (fx: number, fy: number) => groundPassable(w, ...fr.tile(fx, fy, 1));
+  const tx = Math.floor(p.x);
+  const ty = Math.floor(p.y);
+  if (pass(tx, ty)) return { x, y };
   const R = SALVAGE.shiftRadius;
   const span = Math.ceil(R);
   let best: { x: number; y: number } | null = null;
@@ -52,27 +58,108 @@ export function wreckRestingSpot(w: World, x: number, y: number): { x: number; y
     for (let dx = -span; dx <= span; dx++) {
       const nx = tx + dx;
       const ny = ty + dy;
-      if (!groundPassable(w, nx, ny)) continue;
+      if (!pass(nx, ny)) continue;
       // nearest point of that tile, kept off its very edge
-      const cx = Math.max(nx + 0.2, Math.min(nx + 0.8, x));
-      const cy = Math.max(ny + 0.2, Math.min(ny + 0.8, y));
-      const d = hypot(cx - x, cy - y);
+      const cx = Math.max(nx + 0.2, Math.min(nx + 0.8, p.x));
+      const cy = Math.max(ny + 0.2, Math.min(ny + 0.8, p.y));
+      const d = hypot(cx - p.x, cy - p.y);
       if (d > R || d >= bestD) continue;
       bestD = d;
       best = { x: cx, y: cy };
     }
-  return best;
+  return best ? fr.pt(best) : null;
 }
 
-/** Leave a wreck where unit `u` died (called from cleanupDeaths). */
+/** Make room for one more wreck: the field holds so much, and the oldest burns out first. */
+function makeRoom(w: World): void {
+  while (w.wrecks.length >= SALVAGE.maxWrecks) w.wrecks.shift();
+}
+
+/**
+ * Scatter `value` scrap over `count` piles around (x, y), each up to `spread`
+ * tiles out, as wrecks flagged `pile` (Wreck.pile). The pattern is turned by
+ * `facing` and its random draws are keyed by the tick and the pile, not by
+ * ids, so mirror-image deaths on the same tick scatter as mirror images.
+ * Piles that would land somewhere no tank can reach are lost.
+ */
+export function scatterPiles(
+  w: World,
+  faction: Faction,
+  x: number,
+  y: number,
+  value: number,
+  count: number,
+  spread: number,
+  facing: number,
+  salt: string
+): Wreck[] {
+  const out: Wreck[] = [];
+  if (value <= 0 || count <= 0) return out;
+  const each = Math.round(value / count);
+  if (each <= 0) return out;
+  for (let i = 0; i < count; i++) {
+    const a = facing + ((i + 0.5 * worldRandom(w, salt, w.tick, i, 0)) / count) * Math.PI * 2;
+    const r = spread * (0.3 + 0.7 * worldRandom(w, salt, w.tick, i, 1));
+    const spot = wreckRestingSpot(w, x + sin(a) * r, y - cos(a) * r);
+    if (!spot) continue;
+    makeRoom(w);
+    const pile: Wreck = {
+      id: w.nextId++,
+      kind: "goliath",
+      faction,
+      x: spot.x,
+      y: spot.y,
+      facing: a,
+      value: each,
+      ttl: Math.round(GOLIATH.pileTtl * TICK_RATE),
+      hot: Math.round(SALVAGE.hot * TICK_RATE),
+      pile: true
+    };
+    w.wrecks.push(pile);
+    out.push(pile);
+  }
+  return out;
+}
+
+/**
+ * A fallen Goliath leaves no hull, but its salvage scattered over a wide
+ * area (GOLIATH.salvage): several scrap piles, so collecting all of it means
+ * holding the ground. Over water most of it is lost.
+ */
+function scatterGoliath(w: World, u: Unit): Wreck[] {
+  const S = GOLIATH.salvage;
+  const value = Math.round(UNITS.goliath.cost * S.share * (wreckShareOf(w, u.faction) / SALVAGE.share));
+  const count = S.piles[0] + Math.floor(worldRandom(w, "goliath-piles", w.tick) * (S.piles[1] - S.piles[0] + 1));
+  return scatterPiles(w, u.faction, u.x, u.y, value, Math.min(count, S.piles[1]), S.spread, u.facing, "goliath-salvage");
+}
+
+/**
+ * A Gantry destroyed with a Goliath on its cradle: the build is lost, and
+ * scrap scatters around it in proportion to how far it had got
+ * (GOLIATH.gantrySalvage: a share of what was paid × progress).
+ */
+export function scatterGantry(w: World, b: Building): Wreck[] {
+  const head = b.queue[0];
+  if (!head || head.kind !== "goliath") return [];
+  const total = UNITS.goliath.buildTime * TICK_RATE;
+  const progress = Math.max(0, Math.min(1, 1 - head.remaining / total));
+  const S = GOLIATH.gantrySalvage;
+  const value = Math.round((head.paid ?? UNITS.goliath.cost) * progress * S.share);
+  const count = Math.max(1, Math.round(S.piles * progress));
+  const c = buildingCenter(b);
+  // (the Gantry's own facing turns red's scatter as the mirror of blue's)
+  return scatterPiles(w, b.faction, c.x, c.y, value, count, S.spread + BUILDINGS.gantry.size / 2, b.faction === "red" ? Math.PI : 0, "gantry-salvage");
+}
+
+/** Leave a wreck where unit `u` died (called from cleanupDeaths); a Goliath scatters scrap piles instead (and returns the first). */
 export function leaveWreck(w: World, u: Unit): Wreck | null {
   if (u.free) return null; // a map-given unit cost nothing, so it leaves nothing to cash in
+  if (u.goliath) return scatterGoliath(w, u)[0] ?? null;
   const value = wreckValue(u.kind, wreckShareOf(w, u.faction));
   if (value <= 0) return null;
   const spot = wreckRestingSpot(w, u.x, u.y);
   if (!spot) return null;
-  // the field holds so much: the oldest wreck burns out first
-  while (w.wrecks.length >= SALVAGE.maxWrecks) w.wrecks.shift();
+  makeRoom(w);
   const r: Wreck = {
     id: u.id,
     kind: u.kind,
@@ -110,7 +197,7 @@ export function tickSalvage(w: World): void {
   // ...nor can Last Stand's waves (no economy to feed): the wrecks stay for the defender
   if (w.survival) earns[w.survival.defender === "blue" ? "red" : "blue"] = false;
   const ground: Unit[] = [];
-  for (const u of w.units.values()) if (UNITS[u.kind].domain === "ground" && earns[u.faction]) ground.push(u);
+  for (const u of w.units.values()) if (domainOf(u) === "ground" && earns[u.faction]) ground.push(u);
   const keep: Wreck[] = [];
   for (const r of w.wrecks) {
     if (--r.ttl <= 0) continue; // burnt out

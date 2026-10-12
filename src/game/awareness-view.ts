@@ -4,6 +4,7 @@
  * with a camera glide, the ⚡ jump button and the battle meter. The rules are
  * in ./awareness (engine-free, tested); the widgets in ../ui/awareness.
  */
+import { UNITS } from "../sim/balance";
 import type { Faction, FxEvent, Unit, World } from "../sim/types";
 import { sfx } from "./audio";
 import type { CameraRig } from "./three/camera";
@@ -142,7 +143,10 @@ export class Awareness {
         if (t - this.lastShotInView < 0.2) break;
         const a = this.toScreen(ev.x, ev.y);
         const b = this.toScreen(ev.tx, ev.ty);
-        if ((inside(play, a.x, a.y) && this.h.sees(ev.x, ev.y)) || (inside(play, b.x, b.y) && this.h.sees(ev.tx, ev.ty)))
+        // (a Goliath firing from the fog is still seen firing: it can't hide)
+        const src = this.h.world.units.get(ev.sourceId);
+        const always = !!src && !!UNITS[src.kind].alwaysVisible;
+        if ((inside(play, a.x, a.y) && (always || this.h.sees(ev.x, ev.y))) || (inside(play, b.x, b.y) && this.h.sees(ev.tx, ev.ty)))
           this.lastShotInView = t;
       }
     if (this.h.spectator) return;
@@ -296,6 +300,7 @@ export class Awareness {
         const s = this.toScreen(x, y);
         return inside(L.play, s.x, s.y) && s.y > L.markers.y0 - MARKER.size / 2;
       };
+      // (tallyView itself counts a kind that is always visible, the enemy Goliath, fog or not)
       this.tally = tallyView(
         this.h.world, this.h.spectator ? "blue" : this.h.player, inView, (x, y) => this.h.sees(x, y),
         (u) => this.h.seesUnit?.(u) ?? true

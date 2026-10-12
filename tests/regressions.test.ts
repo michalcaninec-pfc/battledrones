@@ -134,7 +134,7 @@ describe("Last Stand salvage (sim-5)", () => {
     const ty = Math.floor(at.y);
     expect(groundPassable(w, tx, ty)).toBe(true);
     const red = spawnUnit(w, "stinger", "red", tx + 0.5, ty + 0.5);
-    w.wrecks.push({ id: 1e6, kind: "titan", faction: "blue", x: tx + 0.5, y: ty + 0.5, facing: 0, value: 140, ttl: 600, hot: 0 });
+    w.wrecks.push({ id: 1e6, kind: "mastodon", faction: "blue", x: tx + 0.5, y: ty + 0.5, facing: 0, value: 140, ttl: 600, hot: 0 });
     return red;
   }
 
@@ -166,10 +166,10 @@ describe("AI veterans and the dodge reflex (merge-veteran-retreat-overrides-dodg
     spawnBuilding(w, "hq", "blue", 2, 2);
     const hq = buildingCenter(spawnBuilding(w, "hq", "red", 35, 35));
     w.powers.meter.blue = 100;
-    // a rank-2 Titan at 30% HP, 9 tiles out from its HQ; a Barrage lands just on the home side of it
-    const t = spawnUnit(w, "titan", "red", hq.x - 6.4, hq.y - 6.4);
+    // a rank-2 Mastodon at 30% HP, 9 tiles out from its HQ; a Barrage lands just on the home side of it
+    const t = spawnUnit(w, "mastodon", "red", hq.x - 6.4, hq.y - 6.4);
     t.rank = 2;
-    t.hp = UNITS.titan.hp * 0.3;
+    t.hp = UNITS.mastodon.hp * 0.3;
     const start = t.hp;
     const at = { x: t.x + 0.85, y: t.y + 0.85 };
     tickFog(w);

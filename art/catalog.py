@@ -118,8 +118,8 @@ pair(
     "mortar tube pointing straight up.",
 )
 pair(
-    "titan",
-    "A massive unmanned super-heavy battle tank called the Titan, broad and brutal.",
+    "mastodon",
+    "A massive unmanned super-heavy battle tank called the Mastodon, broad and brutal.",
     "the huge hull ALONE: wide twin tracks on each side, thick sloped armor, an empty large "
     "circular turret ring in the middle (no turret).",
     "the matching huge turret ALONE: heavily armored wedge-shaped turret with TWO thick "

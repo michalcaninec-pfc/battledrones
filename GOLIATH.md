@@ -2,11 +2,138 @@
 
 ## Status
 
-A proposal. None of it is built. The Goliath is a giant walking mech that
-works as a **mobile base**: it takes harvested scrap, lets you build far from
-home and trains infantry, while fighting with weapons it loses one by one as
-it takes damage. It is built at a new top-of-the-tree building, the
-**Gantry**.
+Implemented (commits 137e290 and 86572c0 for the Titan → Mastodon rename,
+6a64545…9b77538 for the Goliath, the Gantry and the two mutators below).
+The rest of this file is the spec as written; **DESIGN.md** describes the
+shipped game (Buildings, Units → *The Goliath* and *The two-Condor lift*,
+Battlefield salvage, Combat, Voices & announcer, Command UX, Fog of war,
+Match flow, the finale and the report, Career, medals, mutators and the
+Daily Op, Controls & UI, 3D view). Where the code differs from the spec,
+and why:
+
+- **Every starting number shipped as written**, in `GOLIATH`,
+  `UNITS.goliath` and `BUILDINGS.gantry` (`src/sim/balance.ts`): 1,600
+  scrap and +25% per Goliath, 3,000 HP, 60 s, sight 10, weapons lost below
+  75 / 50 / 25% and back 5% above after a 2.5 s reboot, 4 s to anchor and
+  6 s to pack up, a 3-tile ring, half a Condor's speed, 25% of max HP on a
+  drop, 6–8 piles; a 3×3 Gantry for 600 scrap, 25 s and 1,200 HP. What
+  the table left open, and the one number tuned since:
+- **Mortar splash 0.9** (a Mortar's is 1.1). At 1.1 a cost-equal group of
+  Rocket Squads only edged a Goliath (−0.14 in `tools/balance.ts
+  goliath`); at 0.9 they win by 0.39, a real answer like Lancers, Wasps
+  and Hornets, and it still beats Troopers.
+- **The weapons as built.** The two mortar tubes fire in turn, a shell
+  every 1.5 s, and the two arm cannons alternate half-shells every 0.6 s:
+  the DPS of two Mortars and a Mastodon. Each system has its own clock
+  and picks its own target; the Goliath fires on the move, halts on
+  attack-move once any weapon has a target, and turns its torso to the
+  heaviest weapon's. An attack order counts only the weapons still up
+  that can hit the target, so a Goliath with its mortars down gives up on
+  one across the water.
+- **Anchoring needs a 2×2 patch** (`GOLIATH.footprint`) of buildable
+  ground with no building, Uplink platform, crate or ground unit on it.
+  The Goliath settles onto its middle, and the 3-tile ring is measured
+  from there to a building's footprint. Dug in (anchoring, anchored or
+  packing up), the patch goes in the occupancy grid: paths go round it
+  and nothing pushes it. (The spec tests found a dug-in Goliath jamming
+  every path through it.)
+- **Orders to an anchored Goliath.** A move or attack-move packs it up,
+  and it walks off once it is free; an attack order doesn't, and a dug-in
+  Goliath that is shot doesn't chase the shooter (its guns answer on their
+  own). On touch, a tap with only an anchored Goliath selected sets the
+  rally point for its squads instead of moving it; G (or the ⚓ chip)
+  anchors and packs up.
+- **The cost step counts Goliaths alive or on a Gantry's cradle**, so
+  losing one makes the next cheaper again; the Gantry queues one at a
+  time (`queueMax`), and "one per side" counts a Gantry still under
+  construction.
+- **"Nearly complete" is called at 85%** (`nearlyDone`), as a radio line;
+  "in production" and "on the field" are banners.
+- **Harvesters** only count a Goliath, or an outpost, that they can drive
+  to. One bound for a Goliath reroutes when it packs up, and with nowhere
+  left to unload a loaded harvester waits for a Goliath to dig in again
+  (the review found Nomads idling every harvester whenever its only base
+  moved).
+- **The Mender preference is in every Mender's own pick** (`combat.ts`
+  `tickHealer`, through `goliath.ts repairUrgency`), not in
+  `ai/menders.ts`: the player's Menders favour a Goliath with a weapon
+  down, rebooting or a few percent from coming back as much as the AI's
+  do.
+- **EMP** holds a reboot as well as repair, and pauses anchoring, packing
+  up and a lift.
+- **Salvage:** a dead Goliath scatters 30% of its list price over its
+  6–8 piles, each up to 2.5 tiles out; a Gantry destroyed mid-build, 30%
+  of what was paid × progress in up to 4 piles. Piles lie for 90 s
+  (wrecks: 60 s).
+- **The lift as built:** with the lift selected, a tap flies it there to
+  hover, a long-press flies it there and sets it down, and ⇣ Set down (U)
+  puts it down where it hovers. A set-down point a Goliath can't stand on
+  drifts to the nearest ground within 6 tiles. In the air it is an air
+  target. Dropped onto a building, it slides off to open ground close by,
+  or is destroyed if there is none.
+- **Islands:** no special rules for the Goliath, as specified, so its
+  outposts may go up on an island too: the one exception to "nothing
+  reaches an island but by Condor" on the Archipelago. The squads it
+  trains and an island outpost's units roll out on that island. Home land
+  is remembered after the HQ falls, so ordinary buildings and Drop Pods
+  still stay off the islands.
+- **Last Stand and Ops** still end when the HQ falls, Goliath or not:
+  they are bases to hold (a Last Stand could otherwise stall with waves
+  that have nothing left to attack). An op won on the enemy's last
+  Goliath says "Enemy Goliath destroyed".
+- **Calldowns** need an HQ or a Goliath; with no HQ, calldown kills are
+  credited to no unit (crediting the Goliath would let it rank up on
+  barrages).
+- **A Goliath Slayer medal** (🪨, bring down one enemy Goliath) joined
+  Giant Slayer, which still counts 3 Mastodons.
+- **Agents**, out of scope as planned: the arena's briefing tables list
+  the Goliath and the Gantry and agents can build them, but there is no
+  order to anchor or lift, and AGENT-BATTLES.md doesn't teach them.
+- **Done when:**
+  - 183 tests: `tests/goliath.test.ts` (76, the sim against this spec),
+    `goliath-feedback.test.ts` (42: radio, banners, awareness, advisor,
+    music, report, voices), `ai-goliath.test.ts` (20: the commander's
+    Gantry, Goliaths, sites, lifts, hunts, Nomads and Robot Love),
+    `goliath-ui.test.ts` (14: taps, the lift, training, the build zone),
+    `goliath-render.test.ts` (11), `goliath-mutators.test.ts` (13: Nomads,
+    Robot Love, the draw) and `goliath-review.test.ts` (7: one per fix from
+    the adversarial review). The whole suite passes (902).
+  - Rocket Squads, Wasps, Lancers and Hornets are real answers: a Goliath
+    loses to 1,600 scrap of each by 0.39–0.84 (`npm run balance goliath`;
+    DESIGN.md's *Goliath pass* has every unit's margin).
+  - The AI builds and uses them: in round robins of 30 AI-vs-AI matches a
+    map, 18–26 of 30 have a Goliath on every map but the Proving Grounds
+    (too few fields for the AI's Gantry), the first rolls out at a median
+    6:34–9:08, and mean match lengths move from 9.8–16.0 to 9.8–16.7
+    minutes. Not finished: on the Archipelago a side dug in behind a
+    Goliath can hold out to 25:00 (`AI-GOLIATH-NOTES.md`).
+
+**Additions**, asked for after this spec was written (DESIGN.md,
+*Career, medals, mutators and the Daily Op*):
+
+- **Nomads** 🦿 ("Each side starts with a Goliath instead of a base"): in
+  a skirmish each side's HQ is replaced by a Goliath standing anchored
+  where it stood, and there is no HQ. Anchored Goliaths then also build
+  Harvesters, every building is an outpost, the openers set up round the
+  Goliath, and calldowns work with a Goliath and no HQ.
+- **Robot Love** 💘 ("Two enemy Goliaths that meet fall in love, and the
+  battle ends in a draw"): a blue and a red Goliath within 5 tiles of each
+  other (`GOLIATH.love.range`) end the match in a draw (`World.winner`
+  `"draw"`), with a canned love scene — the two meet, eyes pink, hearts
+  bubbling out, the banner "💘 They fell in love / It's a draw" and a
+  sweet sting — a DRAW report, and a career result that is neither a win
+  nor a loss, with its own XP (scaled down for a short match, as a loss
+  is, so a quick meeting can't be farmed). Battle records end with no winner and the
+  reason `"love"`.
+- Both conflict with Air War and Infantry War, which ban the Goliath, and
+  the Daily Op draws its mutators from a frozen list that leaves them out.
+
+## The spec as written
+
+The Goliath is a giant walking mech that works as a **mobile base**: it
+takes harvested scrap, lets you build far from home and trains infantry,
+while fighting with weapons it loses one by one as it takes damage. It is
+built at a new top-of-the-tree building, the **Gantry**.
 
 > **Every number in this spec is a starting point, not a commitment.**
 > Costs, HP, timings, ranges, thresholds, weapon strength and speeds all live

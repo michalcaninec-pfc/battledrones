@@ -44,7 +44,7 @@ export const isTransport = (kind: UnitKind): boolean => (UNITS[kind].capacity ??
  * whether it sees an enemy UNIT: targeting, the AI's eyes, the renderer.
  */
 export function unitSeenBy(w: World, faction: Faction, u: Unit): boolean {
-  if (u.faction === faction) return true;
+  if (u.faction === faction || UNITS[u.kind].alwaysVisible) return true; // (a Goliath can't hide)
   if (!isVisible(w, faction, Math.floor(u.x), Math.floor(u.y))) return false;
   return !concealedFrom(w, faction, u);
 }
@@ -75,19 +75,19 @@ export function concealedFrom(w: World, faction: Faction, u: Unit): boolean {
   return true;
 }
 
-/** Can this kind crush infantry by driving over it? (The Titan.) */
-export const crushes = (kind: UnitKind): boolean => kind === "titan";
+/** Can this kind crush infantry by driving over it? (The Mastodon.) */
+export const crushes = (kind: UnitKind): boolean => kind === "mastodon";
 
-/** Ticks between `crush` FxEvents for one victim while a Titan keeps rolling over it. */
+/** Ticks between `crush` FxEvents for one victim while a Mastodon keeps rolling over it. */
 const CRUSH_FX_EVERY = 5;
 
 /**
- * Crushing (movement.ts calls this after movement, with the Titans that
+ * Crushing (movement.ts calls this after movement, with the Mastodons that
  * actually drove this tick): each deals INFANTRY.crushDps per second to
  * every ENEMY squad whose centre is within its radius + INFANTRY.crushReach,
- * credited to the Titan (kills, XP, retaliation) with the usual `hit`
+ * credited to the Mastodon (kills, XP, retaliation) with the usual `hit`
  * events, plus a `crush` FxEvent on first contact and every few ticks after.
- * A Titan standing still crushes nothing; friendly squads step aside
+ * A Mastodon standing still crushes nothing; friendly squads step aside
  * (separation) and are never hurt.
  */
 export function tickCrush(w: World, moved: readonly Unit[]): void {
@@ -101,7 +101,7 @@ export function tickCrush(w: World, moved: readonly Unit[]): void {
       const dx = v.x - t.x;
       const dy = v.y - t.y;
       if (dx > reach || dx < -reach || dy > reach || dy < -reach || hypot(dx, dy) > reach) continue;
-      // first contact (not under this Titan last tick), then every few ticks
+      // first contact (not under this Mastodon last tick), then every few ticks
       const rolling = v.lastAttackerId === t.id && v.damagedTick >= w.tick - 1;
       if (!rolling || w.tick % CRUSH_FX_EVERY === 0)
         w.fx.push({ type: "crush", faction: v.faction, id: v.id, attackerId: t.id, x: v.x, y: v.y });

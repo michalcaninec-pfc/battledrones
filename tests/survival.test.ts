@@ -105,7 +105,7 @@ describe("wave schedule", () => {
       // the first block always shows the threats with their own answers (anti-air, anti-infantry)
       expect([1, 2, 3, 4].map((i) => waveTheme(w, i))).toEqual(expect.arrayContaining(["air", "swarm"]));
       // each boss is previewed in its block: an Air Raid before a Bomber Wing, and so on
-      const preview: Record<string, WaveTheme> = { "Titan Spearhead": "armour", "Bomber Wing": "air", "Elite Strike Force": "mixed" };
+      const preview: Record<string, WaveTheme> = { "Mastodon Spearhead": "armour", "Bomber Wing": "air", "Elite Strike Force": "mixed" };
       for (let block = 0; block < 40; block++) {
         const boss = waveName(w, block * 5 + 5);
         expect([1, 2, 3, 4].map((i) => waveTheme(w, block * 5 + i)), `${boss} at ${block * 5 + 5}`).toContain(preview[boss]);
@@ -518,19 +518,19 @@ describe("clearing waves and game over", () => {
 describe("Last Stand salvage", () => {
   it("wave units leave only scrap-light wrecks; the defender's own losses salvage as usual", () => {
     const w = lastStand("riverlands", 42);
-    const mine = spawnUnit(w, "titan", "blue", 20.5, 40.5);
-    const theirs = spawnUnit(w, "titan", "red", 30.5, 30.5);
+    const mine = spawnUnit(w, "mastodon", "blue", 20.5, 40.5);
+    const theirs = spawnUnit(w, "mastodon", "red", 30.5, 30.5);
     mine.hp = 0;
     theirs.hp = 0;
     step(w, []);
     const wreck = (f: string) => w.wrecks.find((r) => r.faction === f)!;
-    expect(wreck("red").value).toBe(Math.round(UNITS.titan.cost * SURVIVAL.waveWreckShare));
+    expect(wreck("red").value).toBe(Math.round(UNITS.mastodon.cost * SURVIVAL.waveWreckShare));
     // at the skirmish's 30% a defender salvaged 17–67k a run and outlasted 25+ waves
-    expect(wreck("red").value).toBeLessThanOrEqual(UNITS.titan.cost * 0.1);
-    expect(wreck("blue").value).toBe(wreckValue("titan"));
+    expect(wreck("red").value).toBeLessThanOrEqual(UNITS.mastodon.cost * 0.1);
+    expect(wreck("blue").value).toBe(wreckValue("mastodon"));
     // the share lives on this world's survival state, not in a global
     expect(createMapWorld("riverlands").survival).toBeFalsy();
-    expect(wreckValue("titan")).toBe(Math.round(UNITS.titan.cost * 0.3));
+    expect(wreckValue("mastodon")).toBe(Math.round(UNITS.mastodon.cost * 0.3));
   });
 });
 

@@ -27,7 +27,9 @@ export const TEX = {
   /** A ragged muzzle-flash burst. */
   flare: 12,
   /** A shaded shard: lit facet, dark rim. */
-  chunk: 13
+  chunk: 13,
+  /** A plump heart, lit from the upper left with a soft rim (Robot Love). */
+  heart: 14
 } as const;
 export type TexCell = (typeof TEX)[keyof typeof TEX];
 
@@ -326,6 +328,33 @@ function paintAtlas(): HTMLCanvasElement {
     ctx.lineTo(r * 0.1, r * 0.1);
     ctx.lineTo(r * 0.3, r * 0.4);
     ctx.stroke();
+  });
+  cell(TEX.heart, (ctx, r) => {
+    const heart = (k: number) => {
+      const s = r * k;
+      ctx.beginPath();
+      ctx.moveTo(0, s * 0.82);
+      ctx.bezierCurveTo(-s * 0.18, s * 0.6, -s * 0.92, s * 0.18, -s * 0.9, -s * 0.28);
+      ctx.bezierCurveTo(-s * 0.88, -s * 0.74, -s * 0.24, -s * 0.86, 0, -s * 0.42);
+      ctx.bezierCurveTo(s * 0.24, -s * 0.86, s * 0.88, -s * 0.74, s * 0.9, -s * 0.28);
+      ctx.bezierCurveTo(s * 0.92, s * 0.18, s * 0.18, s * 0.6, 0, s * 0.82);
+      ctx.closePath();
+    };
+    // a soft dark rim (it reads on snow and sand), the body shaded from the upper left, a glossy highlight
+    heart(0.98);
+    ctx.fillStyle = "rgba(40,0,20,0.35)";
+    ctx.fill();
+    heart(0.88);
+    const g = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r);
+    g.addColorStop(0, "rgb(255,255,255)");
+    g.addColorStop(0.55, "rgb(225,225,225)");
+    g.addColorStop(1, "rgb(150,150,150)");
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.42, -r * 0.42, r * 0.16, r * 0.1, -0.6, 0, Math.PI * 2);
+    ctx.fill();
   });
   return c;
 }

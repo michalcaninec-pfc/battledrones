@@ -49,6 +49,16 @@ export function dayLabel(day: number): string {
  */
 export const DAILY_MAPS = ["riverlands", "dune-sea", "frostbite", "ashlands", "proving-grounds"] as const;
 
+/**
+ * The mutators a Daily Op draws its pair from, frozen like DAILY_MAPS: the
+ * pair is a hash of the date into this list, so adding a mutator to the game
+ * must not change any day's op. (Nomads and Robot Love came later, and stay
+ * out: they are menu picks.)
+ */
+export const DAILY_MUTATORS: readonly MutatorId[] = [
+  "blitz", "goldrush", "glass", "rapidfab", "airwar", "infantrywar", "airborne", "veterans", "clearskies"
+];
+
 const STRATEGY_NAMES = Object.keys(STRATEGIES) as StrategyName[];
 const FALLBACK: MutatorId[] = ["blitz", "glass"];
 
@@ -65,8 +75,8 @@ export function dailyOp(day: number): DailyOp {
   const difficulty = h("diff") % 3 === 0 ? "hard" : "normal";
   let mutators = FALLBACK;
   for (let attempt = 0; attempt < 64; attempt++) {
-    const a = MUTATOR_IDS[h("mut-a", attempt) % MUTATOR_IDS.length]!;
-    const b = MUTATOR_IDS[h("mut-b", attempt) % MUTATOR_IDS.length]!;
+    const a = DAILY_MUTATORS[h("mut-a", attempt) % DAILY_MUTATORS.length]!;
+    const b = DAILY_MUTATORS[h("mut-b", attempt) % DAILY_MUTATORS.length]!;
     // canonical order, so the card reads the same way the rules list them
     const pair = MUTATOR_IDS.filter((id) => id === a || id === b);
     if (dailyCompatible(strategy, pair)) {

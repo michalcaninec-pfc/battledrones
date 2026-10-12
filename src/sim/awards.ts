@@ -17,6 +17,7 @@ export type MedalId =
   | "tycoon"
   | "ace"
   | "giant-slayer"
+  | "goliath-slayer"
   | "air-superiority"
   | "iron-wall"
   | "exterminator"
@@ -48,7 +49,9 @@ export const AWARDS = {
   tycoonRatio: 2,
   tycoonMin: 3000,
   aceKills: 9,
-  giantTitans: 3,
+  giantMastodons: 3,
+  /** Goliath Slayer: enemy Goliaths destroyed (one is a feat: it takes a real army, or a clever drop). */
+  goliathKills: 1,
   airKills: 30,
   wallKills: 30,
   exterminatorKills: 60,
@@ -78,7 +81,8 @@ export const MEDALS: Record<MedalId, MedalDef> = {
   flawless: { id: "flawless", name: "Flawless", icon: "💎", desc: "Win losing 5 units or fewer", mode: "skirmish" },
   tycoon: { id: "tycoon", name: "Tycoon", icon: "💰", desc: "Win having harvested twice the enemy's scrap", mode: "skirmish" },
   ace: { id: "ace", name: "Ace", icon: "🎖️", desc: "One unit scores 9 kills", mode: "skirmish" },
-  "giant-slayer": { id: "giant-slayer", name: "Giant Slayer", icon: "🗿", desc: "Destroy 3 enemy Titans", mode: "skirmish" },
+  "giant-slayer": { id: "giant-slayer", name: "Giant Slayer", icon: "🗿", desc: "Destroy 3 enemy Mastodons", mode: "skirmish" },
+  "goliath-slayer": { id: "goliath-slayer", name: "Goliath Slayer", icon: "🪨", desc: "Bring down an enemy Goliath", mode: "skirmish" },
   "air-superiority": { id: "air-superiority", name: "Air Superiority", icon: "✈️", desc: "Shoot down 30 enemy aircraft", mode: "skirmish" },
   "iron-wall": { id: "iron-wall", name: "Iron Wall", icon: "🧱", desc: "Your defences destroy 30 enemy units", mode: "skirmish" },
   exterminator: { id: "exterminator", name: "Exterminator", icon: "☠️", desc: "Destroy 60 enemy units", mode: "skirmish" },
@@ -125,6 +129,7 @@ export interface RecapStrike {
 /** Everything the medals need, from one side's point of view. */
 export interface MatchRecap {
   pov: Faction;
+  /** The pov side won. A draw (Robot Love: two Goliaths fell in love) is not a win. */
   won: boolean;
   /** Match length in seconds. */
   secs: number;
@@ -173,7 +178,12 @@ function killsWhere(r: MatchRecap, pred: (d: RecapDeath) => boolean): number {
   return n;
 }
 
-/** The medals this recap earns, in display order. */
+/**
+ * The medals this recap earns, in display order. Victory medals need the
+ * win; feats of arms count in defeat and in a draw alike (a match that ends
+ * with two Goliaths in love was won by nobody, but what was destroyed on the
+ * way still was).
+ */
 export function computeMedals(r: MatchRecap): MedalId[] {
   if (r.waves !== undefined && r.waves !== null) {
     const out: MedalId[] = [];
@@ -192,7 +202,8 @@ export function computeMedals(r: MatchRecap): MedalId[] {
     out.push("tycoon");
   // feats of arms count in defeat too: a consolation worth chasing
   if (r.bestUnitKills >= AWARDS.aceKills) out.push("ace");
-  if (killsWhere(r, (d) => d.unitKind === "titan") >= AWARDS.giantTitans) out.push("giant-slayer");
+  if (killsWhere(r, (d) => d.unitKind === "mastodon") >= AWARDS.giantMastodons) out.push("giant-slayer");
+  if (killsWhere(r, (d) => d.unitKind === "goliath") >= AWARDS.goliathKills) out.push("goliath-slayer");
   if (killsWhere(r, (d) => UNITS[d.unitKind!].domain === "air") >= AWARDS.airKills) out.push("air-superiority");
   if (killsWhere(r, (d) => d.byBuilding) >= AWARDS.wallKills) out.push("iron-wall");
   if (me.unitsKilled >= AWARDS.exterminatorKills) out.push("exterminator");

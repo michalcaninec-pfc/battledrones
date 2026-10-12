@@ -924,7 +924,7 @@ There are two layers, one cheap and one thorough.
      battles.
    - `branch <record> --at 4:00 --tune '{…}'` plays the battle to 4:00, then
      hands both sides to the AI commander under a tweak. For example: would
-     this comeback still happen with Titans at 1,100 HP? This is the only
+     this comeback still happen with Mastodons at 1,100 HP? This is the only
      kind of what-if a log supports. Re-running the human orders under
      different numbers diverges almost at once, because the orders name
      unit ids that no longer exist, and the players would have reacted

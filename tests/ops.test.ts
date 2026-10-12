@@ -146,14 +146,14 @@ describe("Ops: goals", () => {
     expect(st.lastTagDeath).not.toBeNull();
     expect(w.buildings.has(b!)).toBe(true);
     // losses and kills by kind
-    const t = spawnUnit(w, "titan", "red", 20, 40);
+    const t = spawnUnit(w, "mastodon", "red", 20, 40);
     t.hp = 0;
     const s = [...w.units.values()].find((u) => u.faction === "blue" && u.kind === "stinger")!;
     s.hp = 0;
     step(w, []);
-    expect(st.killed.titan).toBe(1);
+    expect(st.killed.mastodon).toBe(1);
     expect(st.lost.stinger).toBe(1);
-    expect(evalGoal(w, st, { type: "destroy", kind: "titan", count: 2 })).toMatchObject({ state: "pending", value: "1/2" });
+    expect(evalGoal(w, st, { type: "destroy", kind: "mastodon", count: 2 })).toMatchObject({ state: "pending", value: "1/2" });
     expect(evalGoal(w, st, { type: "maxLosses", n: 0 }).state).toBe("failed");
     expect(evalGoal(w, st, { type: "maxLosses", n: 1, kind: "stinger" }).state).toBe("ok");
     expect(evalGoal(w, st, { type: "maxLosses", n: 0, buildings: true }).state).toBe("failed");

@@ -982,9 +982,10 @@ export class SquadRig {
 /**
  * Two-bone leg IK in the leg's plane: thigh and shin angles (about x; the
  * thigh + swings the foot forward, the shin − folds back at the knee) that
- * put the ankle `f` ahead of the hip and `d` below it.
+ * put the ankle `f` ahead of the hip and `d` below it. (The Goliath walks on
+ * it too: three/goliath.ts.)
  */
-function ik(f: number, d: number, a: number, b: number): [number, number] {
+export function ik(f: number, d: number, a: number, b: number): [number, number] {
   const r = Math.max(Math.abs(a - b) + 1e-4, Math.min(a + b - 1e-4, Math.hypot(f, d)));
   const hip = Math.acos(Math.max(-1, Math.min(1, (a * a + r * r - b * b) / (2 * a * r))));
   const knee = Math.acos(Math.max(-1, Math.min(1, (a * a + b * b - r * r) / (2 * a * b))));
@@ -1019,7 +1020,7 @@ export function botHeight(kind: BotKind): number {
 
 /**
  * Riders sit well under their size on the map: a dropship no bigger than a
- * Titan seats two whole squads down its benches (the map's robots are drawn
+ * Mastodon seats two whole squads down its benches (the map's robots are drawn
  * big for readability, see Spec.size).
  */
 export const RIDER_SCALE = 0.4;

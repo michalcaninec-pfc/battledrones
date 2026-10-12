@@ -5,7 +5,8 @@ scrap and crystals, explosions, the menu key art and the app icon — was
 generated with OpenAI's **`gpt-image-2.5-sunburst`** (released 2026-09-08,
 described by OpenAI as its most capable image generation and editing
 model), then processed deterministically in Python into the assets the
-engine loads.
+engine loads. The one exception is the Goliath's and the Gantry's HUD
+portraits, which are shots of their in-game 3D models (end of section 1).
 
 > **The battlefield is now 3D (three.js).** Units, buildings, objectives,
 > trees, rocks, scrap and crystals are procedural low-poly models built in
@@ -79,6 +80,19 @@ cloaked robots with rail rifles), all drawn from a shared **SQUAD** clause
 (straight overhead, every robot facing north); the `condor` dropship (open
 troop bay, two wingtip ducted fans); and the 2×2 `assembly-bay`.
 
+The **Goliath** and its **Gantry** (GOLIATH.md) came later still, and their
+portraits were not generated at all: `public/assets/icons/goliath.webp` and
+`gantry.webp` are rendered from the in-game 3D models. The model gallery's
+`?icon=goliath` / `?icon=gantry` view (`tools/models.html`, an `npm run
+dev` page) draws one blue model alone (the Goliath standing; the Gantry
+with its armament-stage mech on the cradle) on a flat `?bg=` colour under
+the gallery's camera; it was shot once on black and once on white, the
+pair gives a
+clean alpha, and the result is fitted to 112 px in a 128 px square like
+the other portraits. They have no raw, no `catalog.py` entry and no place
+in `PORTRAIT_ONLY`, so `generate.py` and `process.py` neither make them
+nor overwrite them, and no script in the repo re-shoots them.
+
 ## 2. Sprites — `art/process.py`
 
 Deterministic (same raws → byte-identical output). It:
@@ -87,7 +101,7 @@ Deterministic (same raws → byte-identical output). It:
    thresholded alpha (tiny satellites such as rotor discs are attached to
    the nearest part); rotates the Mender and Scout 180° (drawn facing south).
 2. Scales each unit so its longest side matches a per-unit size in tiles
-   (e.g. Scout 0.85, Titan 1.45, Hornet 1.5); turrets share their hull's
+   (e.g. Scout 0.85, Mastodon 1.45, Hornet 1.5); turrets share their hull's
    scale; buildings fill their footprint.
 3. Measures pivots: hull centre of mass; the empty **turret ring** on each
    hull by a gradient circle search + sub-pixel circle fit; the **turret
@@ -205,5 +219,8 @@ them as sprites so they visibly shrink as they're mined.
 - A kind that also needs atlas frames takes a size in `process.py`
   (`UNIT_SIZES` / `BUILDING_SIZES`) instead, and its frame names follow
   automatically.
+- The Goliath and the Gantry are the exception: their portraits are shots
+  of the 3D models (section 1), so changing one means changing the model
+  and shooting it again from `tools/models.html?icon=<kind>&bg=…`.
 - Changing a map in `src/sim/maps.ts` requires re-exporting and re-painting
   its terrain (`npm run maps && npm run art:terrain -- <id>`).

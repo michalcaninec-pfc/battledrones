@@ -56,7 +56,7 @@ describe("placement: why not, and where instead", () => {
     expect(placementBlocker(w, "blue", "turret", 9, 7)).toBe("Not on rock");
     setTerrain(w, 10, 8, Terrain.Rough);
     expect(placementBlocker(w, "blue", "turret", 10, 8)).toBe("Not on cinders");
-    spawnUnit(w, "titan", "blue", 9.5, 9.5);
+    spawnUnit(w, "mastodon", "blue", 9.5, 9.5);
     expect(placementBlocker(w, "blue", "turret", 9, 9)).toBe("Unit in the way");
     // aircraft overhead don't block
     spawnUnit(w, "wasp", "blue", 8.5, 9.5);
@@ -255,7 +255,7 @@ describe("squads", () => {
   it("selecting a squad replaces the selection set (voices hear a new selection)", () => {
     const w = field();
     const c = new Controller(w);
-    const u = spawnUnit(w, "titan", "blue", 10, 10);
+    const u = spawnUnit(w, "mastodon", "blue", 10, 10);
     c.selectUnits([u.id]);
     c.assignSquad(0);
     const before = c.selectedUnits;
@@ -267,21 +267,21 @@ describe("squads", () => {
     const w = field();
     const s = new Squads("blue");
     const st = [0, 1, 2].map((i) => spawnUnit(w, "stinger", "blue", 10 + i, 10));
-    const ti = spawnUnit(w, "titan", "blue", 14, 10);
+    const ti = spawnUnit(w, "mastodon", "blue", 14, 10);
     s.assign(0, [...st.map((u) => u.id), ti.id], w);
     st[0]!.hp = UNITS.stinger.hp / 2;
     let sum = s.summary(0, w)!;
     expect(sum.kind).toBe("stinger");
     expect(sum.count).toBe(4);
-    const max = UNITS.stinger.hp * 3 + UNITS.titan.hp;
+    const max = UNITS.stinger.hp * 3 + UNITS.mastodon.hp;
     expect(sum.hp).toBeCloseTo((max - UNITS.stinger.hp / 2) / max);
     w.units.delete(st[1]!.id);
     w.units.delete(st[2]!.id);
     s.prune(w);
     expect(s.slots[0]).toEqual([st[0]!.id, ti.id]);
-    // 1 stinger vs 1 titan: the pricier kind is the face of the squad
+    // 1 stinger vs 1 mastodon: the pricier kind is the face of the squad
     sum = s.summary(0, w)!;
-    expect(sum.kind).toBe("titan");
+    expect(sum.kind).toBe("mastodon");
     expect(sum.count).toBe(2);
     w.units.delete(st[0]!.id);
     w.units.delete(ti.id);
@@ -374,7 +374,7 @@ describe("build advisor", () => {
     intel.update(1);
     for (const k of ["flak-crawler", "raptor", "sam-site"] as const)
       expect(counterAdvice(w, "blue", intel, k, 1).active, k).toBe(true);
-    for (const k of ["stinger", "titan", "wasp", "turret"] as const)
+    for (const k of ["stinger", "mastodon", "wasp", "turret"] as const)
       expect(counterAdvice(w, "blue", intel, k, 1).active, k).toBe(false);
     expect(adviceNote(counterAdvice(w, "blue", intel, "flak-crawler", 1))).toBe("Counters Wasps (seen ×2)");
     // two wasps (400) vs flak: queued and built flak both count toward the answer
@@ -390,12 +390,12 @@ describe("build advisor", () => {
   it("counts squads riding in Condors toward the answer", () => {
     const w = scene();
     const intel = new EnemyIntel(w, "blue");
-    spawnUnit(w, "titan", "red", 8, 9);
-    spawnUnit(w, "titan", "red", 9, 9);
+    spawnUnit(w, "mastodon", "red", 8, 9);
+    spawnUnit(w, "mastodon", "red", 9, 9);
     tickFog(w);
     intel.update(0);
     expect(counterAdvice(w, "blue", intel, "rocket-squad", 0).active).toBe(true);
-    // enough Rocket Squads on the field answer the Titans…
+    // enough Rocket Squads on the field answer the Mastodons…
     const squads: Unit[] = [];
     while (counterAdvice(w, "blue", intel, "rocket-squad", 0).active) squads.push(spawnUnit(w, "rocket-squad", "blue", 5, 12));
     // …and still do once they're aboard Condors for a drop
@@ -406,6 +406,20 @@ describe("build advisor", () => {
         condor.passengers!.push(u);
       }
     }
+    expect(counterAdvice(w, "blue", intel, "rocket-squad", 0).active).toBe(false);
+  });
+
+  it("counts squads an anchored Goliath is training toward the answer, as a Bay's queue does", () => {
+    const w = scene();
+    const intel = new EnemyIntel(w, "blue");
+    spawnUnit(w, "mastodon", "red", 8, 9);
+    spawnUnit(w, "mastodon", "red", 9, 9);
+    tickFog(w);
+    intel.update(0);
+    const g = spawnUnit(w, "goliath", "blue", 5, 14);
+    g.goliath!.mode = "anchored";
+    for (let i = 0; i < 6 && counterAdvice(w, "blue", intel, "rocket-squad", 0).active; i++)
+      g.goliath!.queue.push({ kind: "rocket-squad", remaining: 90 });
     expect(counterAdvice(w, "blue", intel, "rocket-squad", 0).active).toBe(false);
   });
 
@@ -485,7 +499,7 @@ describe("build advisor", () => {
     expect(now.ground).toBe(false); // (a Stinger costs more than we have)
   });
 
-  it("answers infantry with Mortars, Hornets, Stingers, a Turret and Snipers; Titans with Rocket Squads", () => {
+  it("answers infantry with Mortars, Hornets, Stingers, a Turret and Snipers; Mastodons with Rocket Squads", () => {
     const w = scene();
     const intel = new EnemyIntel(w, "blue");
     spawnUnit(w, "trooper", "red", 8, 9);
@@ -496,8 +510,8 @@ describe("build advisor", () => {
       expect(counterAdvice(w, "blue", intel, k, 0).active, k).toBe(true);
     expect(counterAdvice(w, "blue", intel, "rocket-squad", 0).active).toBe(false);
     expect(adviceNote(counterAdvice(w, "blue", intel, "sniper", 0))).toBe("Counters Trooper Squads (seen ×2)");
-    spawnUnit(w, "titan", "red", 8, 10);
-    spawnUnit(w, "titan", "red", 9, 10);
+    spawnUnit(w, "mastodon", "red", 8, 10);
+    spawnUnit(w, "mastodon", "red", 9, 10);
     tickFog(w);
     intel.update(1);
     expect(counterAdvice(w, "blue", intel, "rocket-squad", 1).active).toBe(true);

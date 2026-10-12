@@ -1,4 +1,4 @@
-import { BUILDINGS, ECONOMY, TERRAIN, UNITS, type TerrainInfo } from "./balance";
+import { BUILDINGS, ECONOMY, GOLIATH, TERRAIN, UNITS, type TerrainInfo } from "./balance";
 import { createFog } from "./fog";
 import { createObjectiveState } from "./objectives";
 import { createPowerState } from "./powers";
@@ -6,8 +6,10 @@ import {
   Terrain,
   type Building,
   type BuildingKind,
+  type Domain,
   type Faction,
   type FactionState,
+  type GoliathState,
   type Unit,
   type UnitKind,
   type World
@@ -200,9 +202,11 @@ export function canGetWithin(
 export function onHomeLand(w: World, faction: Faction, tx: number, ty: number): boolean {
   if (!w.rules?.islands) return true;
   const hq = hqOf(w, faction);
-  if (!hq) return true;
   const s = BUILDINGS.hq.size;
-  const home = regionAt(w, hq.tx + (s >> 1), hq.ty + (s >> 1), "ground");
+  // (the HQ gone, the land it stood on still counts: Rules.homeTiles)
+  const at = hq ? [hq.tx + (s >> 1), hq.ty + (s >> 1)] : w.rules.homeTiles?.[faction];
+  if (!at) return true;
+  const home = regionAt(w, at[0]!, at[1]!, "ground");
   return !home || regionAt(w, tx, ty, "ground") === home;
 }
 
@@ -253,8 +257,31 @@ export function spawnUnit(
     kills: 0
   };
   if (UNITS[kind].capacity) unit.passengers = [];
+  if (kind === "goliath") unit.goliath = newGoliathState();
   w.units.set(unit.id, unit);
   return unit;
+}
+
+/** A fresh Goliath: walking, every weapon system online (goliath.ts). */
+export function newGoliathState(): GoliathState {
+  const weapon = () => ({ online: true, reboot: -1, cooldown: 0, targetId: null, firedTick: -1000 });
+  return {
+    mode: "walking",
+    modeTicks: 0,
+    weapons: { mortars: weapon(), laser: weapon(), cannons: weapon(), mg: weapon() },
+    queue: [],
+    rally: null,
+    lift: null,
+    foot: null
+  };
+}
+
+/**
+ * A unit's domain right now: its kind's, except a Goliath carried off the
+ * ground by two Condors (lift.ts), which is an air target until it is set down.
+ */
+export function domainOf(u: Unit): Domain {
+  return u.goliath?.lift?.phase === "carrying" ? "air" : UNITS[u.kind].domain;
 }
 
 export function spawnBuilding(
@@ -344,7 +371,66 @@ export function hqOf(w: World, faction: Faction): Building | null {
   return null;
 }
 
-/** Nearest friendly scrap drop-off (HQ or depot) to a point. */
+/**
+ * Somewhere harvesters unload: a drop-off building's footprint, or the
+ * GOLIATH.footprint² of ground an anchored Goliath stands on (goliath.ts).
+ */
+export interface DropSite {
+  /** The building's or the Goliath's id. */
+  id: number;
+  faction: Faction;
+  tx: number;
+  ty: number;
+  size: number;
+}
+
+/**
+ * Nearest friendly drop site to a point: a drop-off building, or an anchored
+ * Goliath (packing up, it is none). With `mc`, a Goliath or an outpost (which
+ * can stand out on an island) only counts if a unit of that class at (x, y)
+ * can drive up to it; the base's own drop-offs always count, as they always did.
+ */
+export function nearestDropSite(w: World, faction: Faction, x: number, y: number, mc?: MoveClass): DropSite | null {
+  let best: DropSite | null = null;
+  let bestD = Infinity;
+  const reaches = (tx: number, ty: number, size: number) =>
+    !mc || canGetWithin(w, mc, x, y, tx + size / 2, ty + size / 2, DOCK_REACH, (px, py) => distToFootprint(tx, ty, size, px, py), size);
+  for (const b of w.buildings.values()) {
+    if (b.faction !== faction || !BUILDINGS[b.kind].dropOff) continue;
+    const size = BUILDINGS[b.kind].size;
+    if (b.outpost && !reaches(b.tx, b.ty, size)) continue;
+    const d = distToFootprint(b.tx, b.ty, size, x, y);
+    if (d < bestD) {
+      bestD = d;
+      best = { id: b.id, faction, tx: b.tx, ty: b.ty, size };
+    }
+  }
+  const size = GOLIATH.footprint;
+  for (const u of w.units.values()) {
+    if (u.faction !== faction || u.goliath?.mode !== "anchored" || u.goliath.lift) continue;
+    const tx = u.goliath.foot?.tx ?? u.x - size / 2;
+    const ty = u.goliath.foot?.ty ?? u.y - size / 2;
+    if (!reaches(tx, ty, size)) continue;
+    const d = distToFootprint(tx, ty, size, x, y);
+    if (d < bestD) {
+      bestD = d;
+      best = { id: u.id, faction, tx, ty, size };
+    }
+  }
+  return best;
+}
+
+/** How close (tiles) to a drop site's footprint a harvester must get to unload (economy.ts tickHarvest). */
+const DOCK_REACH = 1.2;
+
+/** Distance from a point to a size² footprint at top-left (tx, ty) (0 inside). */
+function distToFootprint(tx: number, ty: number, size: number, x: number, y: number): number {
+  const dx = Math.max(tx - x, 0, x - (tx + size));
+  const dy = Math.max(ty - y, 0, y - (ty + size));
+  return hypot(dx, dy);
+}
+
+/** Nearest friendly scrap drop-off building (HQ or depot) to a point. */
 export function nearestDropOff(w: World, faction: Faction, x: number, y: number): Building | null {
   let best: Building | null = null;
   let bestD = Infinity;

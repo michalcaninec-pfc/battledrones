@@ -19,7 +19,8 @@ export type SfxName =
   | "deny" | "squad"
   | "siren" | "emp" | "pod" | "hammer" | "charge" | "uplink"
   | "capture" | "uplinkLost" | "drop" | "crate"
-  | "rifle" | "snipe" | "crush" | "clank" | "thrust";
+  | "rifle" | "snipe" | "crush" | "clank" | "thrust"
+  | "anchor" | "packup" | "stomp" | "topple" | "offline" | "reboot" | "weld" | "rollout" | "hook" | "love";
 
 export type AudioChannel = "sfx" | "music" | "voice";
 
@@ -275,7 +276,9 @@ const DUCKS: Partial<Record<SfxName, [number, number]>> = {
   alert: [5, 0.6],
   inbound: [5, 0.7],
   victory: [6, 1.2],
-  defeat: [6, 1.2]
+  defeat: [6, 1.2],
+  topple: [6, 0.9],
+  love: [5, 1.2]
 };
 
 const GAP: Partial<Record<SfxName, number>> = {
@@ -284,11 +287,12 @@ const GAP: Partial<Record<SfxName, number>> = {
   deny: 0.25, squad: 0.1,
   siren: 1.6, emp: 0.25, pod: 0.3, hammer: 0.6, charge: 1, uplink: 0.2,
   capture: 0.8, uplinkLost: 0.8, drop: 2, crate: 0.3,
-  rifle: 0.06, snipe: 0.12, crush: 0.15, clank: 0.07, thrust: 0.3
+  rifle: 0.06, snipe: 0.12, crush: 0.15, clank: 0.07, thrust: 0.3,
+  anchor: 0.8, packup: 1, stomp: 0.18, topple: 0.6, offline: 0.4, reboot: 0.6, weld: 1.4, rollout: 2, hook: 0.6, love: 2
 };
 
 /** Weapon and impact sounds: these thin out at faster game speeds (setTempo). */
-const BATTLE = new Set<SfxName>(["cannon", "heavy", "mg", "flak", "rocket", "missile", "laser", "shell", "bomb", "explosion", "bigExplosion", "heal", "rifle", "snipe", "crush", "clank"]);
+const BATTLE = new Set<SfxName>(["cannon", "heavy", "mg", "flak", "rocket", "missile", "laser", "shell", "bomb", "explosion", "bigExplosion", "heal", "rifle", "snipe", "crush", "clank", "stomp", "weld"]);
 
 /** Short feedback cues that may use the reserved voices above the battle cap. */
 const PRIORITY = new Set<SfxName>(["kill", "lost", "coin", "alert", "inbound"]);
@@ -345,7 +349,7 @@ const RECIPES: Record<SfxName, Recipe> = {
     tone(c, o, t, "sawtooth", 150, 60, 0.12, 0.16);
     return 0.22;
   },
-  // a Titan grinding robots under its tracks: crunch and scrape
+  // a Mastodon grinding robots under its tracks: crunch and scrape
   crush: (c, o, t, n) => {
     noiseBurst(c, o, t, n, 0.18, "lowpass", 900, 0.6, 200);
     noiseBurst(c, o, t + 0.03, n, 0.08, "bandpass", 2400, 0.3);
@@ -645,6 +649,90 @@ const RECIPES: Record<SfxName, Recipe> = {
     [784, 988, 1175, 1568].forEach((f, i) => tone(c, o, t, "triangle", f, f, 0.16, 0.16, 0.06 + i * 0.07));
     tone(c, o, t + 0.34, "sine", 2349, 2600, 0.3, 0.07);
     return 0.66;
+  },
+  // ---- the Goliath ----
+  // stabiliser spikes driven home: two deep thuds, then the hydraulics let out a long hiss
+  anchor: (c, o, t, n) => {
+    for (const d of [0, 0.11]) {
+      tone(c, o, t + d, "sine", 95, 34, 0.32, 0.7);
+      noiseBurst(c, o, t + d, n, 0.12, "lowpass", 700, 0.45, 120);
+    }
+    noiseBurst(c, o, t + 0.18, n, 0.9, "highpass", 2400, 0.16, 5200);
+    noiseBurst(c, o, t + 0.2, n, 0.6, "bandpass", 900, 0.08, 400);
+    return 1.12;
+  },
+  // packing up: a burst of steam, locks clanking open one after another, a rising hydraulic groan
+  packup: (c, o, t, n) => {
+    noiseBurst(c, o, t, n, 0.8, "highpass", 3200, 0.2, 6000);
+    for (const [d, f] of [[0.1, 760], [0.26, 640], [0.4, 820]] as const) {
+      tone(c, o, t + d, "triangle", f, f * 0.7, 0.07, 0.09);
+      noiseBurst(c, o, t + d, n, 0.04, "highpass", 2600, 0.12);
+    }
+    tone(c, o, t + 0.3, "sawtooth", 70, 120, 0.8, 0.05);
+    return 1.12;
+  },
+  // a Goliath's footfall: a heavy, muffled thump with a little metal in it
+  stomp: (c, o, t, n, pitch) => {
+    tone(c, o, t, "sine", 70 * pitch, 30 * pitch, 0.22, 0.6);
+    noiseBurst(c, o, t, n, 0.14, "lowpass", 420, 0.4, 90);
+    tone(c, o, t + 0.01, "triangle", 240 * pitch, 180 * pitch, 0.05, 0.03);
+    return 0.24;
+  },
+  // a Goliath goes down: a long metal groan, then the crash of it hitting the ground and a rumble
+  topple: (c, o, t, n) => {
+    tone(c, o, t, "sawtooth", 140, 62, 0.55, 0.06);
+    tone(c, o, t, "square", 210, 96, 0.5, 0.025);
+    noiseBurst(c, o, t + 0.3, n, 1.3, "lowpass", 1300, 1, 45);
+    tone(c, o, t + 0.3, "sine", 60, 20, 1.1, 1);
+    noiseBurst(c, o, t + 0.34, n, 0.25, "highpass", 2400, 0.3);
+    [0.42, 0.55, 0.7].forEach((d, i) => tone(c, o, t + d, "triangle", 620 - i * 90, 420 - i * 60, 0.08, 0.05));
+    return 1.65;
+  },
+  // a weapon system knocked out: a crackle of sparks and a power-down whine
+  offline: (c, o, t, n) => {
+    for (let i = 0; i < 4; i++) noiseBurst(c, o, t + i * 0.045 + Math.random() * 0.02, n, 0.03, "highpass", 3800, 0.22);
+    tone(c, o, t + 0.05, "sawtooth", 880, 90, 0.6, 0.07);
+    tone(c, o, t + 0.05, "sine", 440, 60, 0.6, 0.08);
+    return 0.68;
+  },
+  // a weapon system rebooting: a power-up whine climbing to a ready beep
+  reboot: (c, o, t) => {
+    tone(c, o, t, "sawtooth", 110, 880, 0.75, 0.05);
+    tone(c, o, t, "sine", 220, 1320, 0.75, 0.06);
+    tone(c, o, t + 0.8, "square", 1568, 1568, 0.07, 0.06);
+    tone(c, o, t + 0.9, "square", 2093, 2093, 0.1, 0.06);
+    return 1.02;
+  },
+  // a welding arc on the Gantry: a quiet buzzing sizzle
+  weld: (c, o, t, n) => {
+    noiseBurst(c, o, t, n, 0.35, "bandpass", 5200, 0.12, 3600);
+    tone(c, o, t, "square", 120, 118, 0.3, 0.012);
+    return 0.38;
+  },
+  // a Goliath walks off its Gantry: the eye powers up with a rising chord, the cradle unlocks with a clank
+  rollout: (c, o, t, n) => {
+    noiseBurst(c, o, t, n, 0.08, "highpass", 2800, 0.2);
+    tone(c, o, t, "triangle", 300, 260, 0.14, 0.2);
+    [196, 247, 294, 392].forEach((f, i) => tone(c, o, t + 0.1 + i * 0.08, "sawtooth", f, f * 2, 0.5, 0.035));
+    tone(c, o, t + 0.5, "sine", 784, 784, 0.6, 0.07);
+    return 1.12;
+  },
+  // two Condors hook onto a Goliath: clamps biting, then the rotors bite into the air with a gust
+  hook: (c, o, t, n) => {
+    for (const d of [0, 0.09]) {
+      tone(c, o, t + d, "triangle", 980, 700, 0.06, 0.08);
+      noiseBurst(c, o, t + d, n, 0.04, "highpass", 3000, 0.15);
+    }
+    noiseBurst(c, o, t + 0.12, n, 0.7, "bandpass", 300, 0.4, 1200);
+    tone(c, o, t + 0.12, "sine", 90, 130, 0.6, 0.12);
+    return 0.84;
+  },
+  // Robot Love: a sweet, bell-like rising chime with a soft shimmer
+  love: (c, o, t) => {
+    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(c, o, t, "sine", f, f, 0.7, 0.08, i * 0.11));
+    [1047, 1319, 1568].forEach((f, i) => tone(c, o, t, "triangle", f * 2, f * 2, 0.5, 0.025, 0.55 + i * 0.09));
+    tone(c, o, t + 0.2, "sine", 262, 262, 1.2, 0.07);
+    return 1.45;
   }
 };
 

@@ -67,7 +67,7 @@ export const VOICES: Record<UnitKind, VoiceSpec> = {
   stinger: { f0: 320, wave: "square", formants: [800, 1800], q: 7, syl: 70, dry: 0.15, gain: 1.0 },
   "flak-crawler": { f0: 230, wave: "square", formants: [700, 1500], q: 6, syl: 80, dry: 0.12, fm: { hz: 31, depth: 0.05 }, gain: 0.6 },
   mortar: { f0: 150, wave: "sawtooth", formants: [560, 1100], q: 7, syl: 115, dry: 0.12, gain: 1.2 },
-  titan: { f0: 80, wave: "sawtooth", formants: [500, 900], q: 6, syl: 140, dry: 0.1, gain: 1.2 },
+  mastodon: { f0: 80, wave: "sawtooth", formants: [500, 900], q: 6, syl: 140, dry: 0.1, gain: 1.2 },
   lancer: { f0: 440, wave: "sine", formants: [1000, 2400], q: 5, syl: 90, dry: 0.8, partial: 2.01, gain: 0.58 },
   wasp: { f0: 220, wave: "sawtooth", formants: [1200, 2600], q: 8, syl: 50, dry: 0.1, fm: { hz: 60, depth: 0.25 }, gain: 1.33 },
   raptor: { f0: 360, wave: "sawtooth", formants: [1100, 2500], q: 7, syl: 60, dry: 0.15, gain: 0.93 },
@@ -78,7 +78,9 @@ export const VOICES: Record<UnitKind, VoiceSpec> = {
   trooper: { f0: 430, wave: "square", formants: [950, 2200], q: 6, syl: 55, dry: 0.3, partial: 1.012, gain: 0.85 },
   "rocket-squad": { f0: 175, wave: "sawtooth", formants: [620, 1250], q: 6, syl: 85, dry: 0.12, fm: { hz: 27, depth: 0.05 }, gain: 1.15 },
   sniper: { f0: 135, wave: "triangle", formants: [520, 1050], q: 4, syl: 135, dry: 0.65, gain: 1.15 },
-  condor: { f0: 92, wave: "sawtooth", formants: [430, 900], q: 5, syl: 120, dry: 0.12, fm: { hz: 44, depth: 0.16 }, gain: 1.15 }
+  condor: { f0: 92, wave: "sawtooth", formants: [430, 900], q: 5, syl: 120, dry: 0.12, fm: { hz: 44, depth: 0.16 }, gain: 1.15 },
+  // the Goliath: the deepest, slowest voice on the field, with a slow mechanical shudder
+  goliath: { f0: 58, wave: "sawtooth", formants: [380, 780], q: 6, syl: 165, dry: 0.08, fm: { hz: 22, depth: 0.06 }, gain: 1.3 }
 };
 
 /** A syllable: a pitch glide `from` → `to` Hz with formants scaled by `vowel`. */
@@ -163,7 +165,7 @@ export function chirpPlan(kind: UnitKind, line: VoiceLine, id: number): ChirpPla
     t = Math.max(t, plan.crackle.at + plan.crackle.dur);
   }
   plan.length = t;
-  // squeeze long voices (the Titan's slow growl) into the time budget
+  // squeeze long voices (the Mastodon's slow growl) into the time budget
   return scalePlan(plan, CHIRP.maxMs);
 }
 
@@ -307,7 +309,7 @@ export class UnitVoices {
 
   /** The player's order went out: the selected units acknowledge (boarding and drops answer like a move). */
   order(
-    kind: "move" | "attack" | "harvest" | "rally" | "place" | "board" | "drop",
+    kind: "move" | "attack" | "harvest" | "rally" | "place" | "board" | "drop" | "anchor",
     selected: ReadonlySet<number>,
     world: World
   ): void {
@@ -320,13 +322,19 @@ export class UnitVoices {
     this.group(kind === "attack" ? "attack" : "move", units);
   }
 
-  /** This tick's sim events: units rolling off the line (or out of a Drop Pod or a Condor), promotions, deaths in view. */
+  /**
+   * This tick's sim events: units rolling off the line (or out of a Drop Pod
+   * or a Condor), promotions, deaths in view, and our Goliath reporting in
+   * once it has dug in where we can see it (it is a base now: "ready").
+   */
   events(list: readonly FxEvent[], h: VoiceHooks): void {
     if (!this.answers(h)) return;
     for (const ev of list) {
       if (ev.type === "built") {
         const u = h.world.units.get(ev.id);
         if (u && u.faction === h.player) this.say(u.kind, "ready", u.id);
+      } else if (ev.type === "goliathMode") {
+        if (ev.mode === "anchored" && ev.faction === h.player && h.inView(ev.x, ev.y)) this.say("goliath", "ready", ev.id);
       } else if (ev.type === "rankUp") {
         const u = h.world.units.get(ev.id);
         if (u && u.faction === h.player && h.inView(u.x, u.y)) this.say(u.kind, "rank", u.id);

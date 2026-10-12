@@ -80,8 +80,10 @@ export class CombatJuice {
   private death(ev: Extract<FxEvent, { type: "death" }>): void {
     const h = this.host;
     const ours = ev.faction === h.player;
-    // (a building is seen where any tile of its footprint is: the sim's rule, and its blast's)
-    const seen = ours || (ev.buildingKind ? this.footprintSeen(ev.x, ev.y, BUILDINGS[ev.buildingKind].size) : h.sees(ev.x, ev.y));
+    // (a building is seen where any tile of its footprint is: the sim's rule, and its blast's; a Goliath
+    // or a Gantry the enemy always sees, so its death is seen wherever it falls)
+    const always = ev.buildingKind ? !!BUILDINGS[ev.buildingKind].alwaysVisible : !!ev.unitKind && !!UNITS[ev.unitKind].alwaysVisible;
+    const seen = ours || always || (ev.buildingKind ? this.footprintSeen(ev.x, ev.y, BUILDINGS[ev.buildingKind].size) : h.sees(ev.x, ev.y));
     const visible = seen && this.v.rig.onScreen(ev.x, ev.y);
     const cue = deathCue(ev, h.player, h.spectator, seen);
     if (cue.sound === "kill") sfx.play("kill", h.earshot(ev.x, ev.y));
@@ -220,9 +222,16 @@ export class CombatJuice {
    * A health bar with a damage trail (recently lost HP in pale gold that
    * drains away) and, for enemies near death, a 2 Hz blink — drawn in screen
    * space, crisp at every zoom. (x, y) is the bar's top-left in CSS px;
-   * `hgt` its fill height (buildings take a taller one).
+   * `hgt` its fill height (buildings take a taller one). `marks` notch
+   * thresholds (shares of full health) taller than the segment ticks: a
+   * Goliath's, where each weapon goes offline — pale while the weapon is
+   * up, amber while it is down (`down`, per mark; without it, once the
+   * health has fallen below the mark).
    */
-  healthBar(ctx: CanvasRenderingContext2D, id: number, x: number, y: number, width: number, ratio: number, friendly: boolean, hgt = 4): void {
+  healthBar(
+    ctx: CanvasRenderingContext2D, id: number, x: number, y: number, width: number, ratio: number, friendly: boolean, hgt = 4,
+    marks?: readonly number[], down?: readonly boolean[]
+  ): void {
     const minW = 22;
     if (width < minW) {
       x -= (minW - width) / 2;
@@ -248,8 +257,17 @@ export class CombatJuice {
     const segs = Math.min(10, Math.floor(w / 7));
     ctx.globalAlpha = 0.55;
     ctx.fillStyle = RIM;
-    if (segs >= 2) for (let i = 1; i < segs; i++) ctx.fillRect(x0 + snap((w * i) / segs, dpr), y0, px, h);
+    if (segs >= 2 && !marks) for (let i = 1; i < segs; i++) ctx.fillRect(x0 + snap((w * i) / segs, dpr), y0, px, h);
     ctx.globalAlpha = 1;
+    if (marks)
+      marks.forEach((m, i) => {
+        // a notch standing proud of the frame, rimmed dark so it reads over the fill
+        const mx = x0 + snap(w * m, dpr);
+        ctx.fillStyle = RIM;
+        ctx.fillRect(mx - px, y0 - 3 * px, 3 * px, h + 6 * px);
+        ctx.fillStyle = (down ? down[i] : r < m) ? "#ffb347" : "rgba(255,255,255,0.9)";
+        ctx.fillRect(mx, y0 - 2 * px, px, h + 4 * px);
+      });
   }
 
   /** A plain meter in the health bars' frame (production, harvester load): `k` of it filled in `color`. */

@@ -1,5 +1,6 @@
 import { BUILDINGS, UNITS } from "./balance";
-import { canPlaceBuilding } from "./economy";
+import { canPlaceBuilding, inBaseRange } from "./economy";
+import { anchoredGoliaths } from "./goliath";
 import { hash32, saltOf } from "./rand";
 import { applySpawnRank, bannedBy } from "./rules";
 import { Terrain, type BuildingKind, type Faction, type UnitKind, type World } from "./types";
@@ -153,17 +154,21 @@ export interface AppliedOpener {
 export function applyOpener(w: World, faction: Faction, id: OpenerId): AppliedOpener {
   const o = OPENERS[id];
   const out: AppliedOpener = { buildingId: null, unitIds: [] };
-  const hq = hqOf(w, faction);
-  if (!hq) return out;
+  const base = basePoint(w, faction);
+  if (!base) return out;
   const fr = frame(w, faction);
-  const hqC = fr.pt(buildingCenter(hq));
+  const hqC = fr.pt(base);
   const field = nearestResourceInFrame(w, fr, hqC);
   const centre = { x: w.width / 2, y: w.height / 2 };
 
   const site = findSite(w, faction, fr, o.building, hqC, field, centre);
   let front = hqC;
   if (site) {
-    const b = spawnBuilding(w, o.building, faction, ...fr.tile(site.fx, site.fy, BUILDINGS[o.building].size));
+    const size = BUILDINGS[o.building].size;
+    const [tx, ty] = fr.tile(site.fx, site.fy, size);
+    const outpost = !inBaseRange(w, faction, tx + size / 2, ty + size / 2); // (Nomads: built round the Goliath)
+    const b = spawnBuilding(w, o.building, faction, tx, ty);
+    if (outpost) b.outpost = true;
     out.buildingId = b.id;
     front = fr.pt(buildingCenter(b));
   }
@@ -218,10 +223,10 @@ export function spawnStartUnits(w: World, faction: Faction, kinds: readonly Unit
 
 /** Where applyOpener would put a `kind` for this side right now (world tile), or null. */
 export function predictOpenerSite(w: World, faction: Faction, kind: BuildingKind): { tx: number; ty: number } | null {
-  const hq = hqOf(w, faction);
-  if (!hq) return null;
+  const base = basePoint(w, faction);
+  if (!base) return null;
   const fr = frame(w, faction);
-  const hqC = fr.pt(buildingCenter(hq));
+  const hqC = fr.pt(base);
   const site = findSite(w, faction, fr, kind, hqC, nearestResourceInFrame(w, fr, hqC), { x: w.width / 2, y: w.height / 2 });
   if (!site) return null;
   const [tx, ty] = fr.tile(site.fx, site.fy, BUILDINGS[kind].size);
@@ -229,6 +234,14 @@ export function predictOpenerSite(w: World, faction: Faction, kind: BuildingKind
 }
 
 // ------------------------------------------------------------ internals ---
+
+/** Where a side's base is (world coords): its HQ's centre, or under Nomads its anchored Goliath. */
+function basePoint(w: World, faction: Faction): { x: number; y: number } | null {
+  const hq = hqOf(w, faction);
+  if (hq) return buildingCenter(hq);
+  const g = anchoredGoliaths(w, faction)[0];
+  return g ? { x: g.x, y: g.y } : null;
+}
 
 type Pt = { x: number; y: number };
 

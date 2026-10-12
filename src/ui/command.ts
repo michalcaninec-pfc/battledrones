@@ -9,13 +9,16 @@
  *   you've seen (and on their tab), and an "idle" tag on the Vehicles /
  *   Infantry / Aircraft tab when a factory sits idle while you can afford
  *   its units.
- * - One-time hints that teach the squad gesture, infantry and the Condor.
+ * - One-time hints that teach the squad gesture, infantry, the Condor, the
+ *   Goliath's anchor and the two-Condor lift.
  *
  * Rules live in ../game/squads.ts and ../game/advisor.ts (tested).
  */
-import { BUILDINGS, UNITS } from "../sim/balance";
+import { BUILDINGS, GOLIATH, UNITS } from "../sim/balance";
 import { buildingBlocker, unitBlocker } from "../sim/economy";
+import { canWalk } from "../sim/goliath";
 import { isInfantry, isTransport } from "../sim/infantry";
+import { canCarry } from "../sim/lift";
 import type { BuildingKind, Faction, FxEvent, UnitKind, World } from "../sim/types";
 import { sfx } from "../game/audio";
 import { PLAYER, type Controller } from "../game/controller";
@@ -42,10 +45,16 @@ const BADGE_MS = 250;
 
 const icon = (kind: string) => `assets/icons/${kind}.webp`;
 
-/** Build-bar tab of each build option (for the tab's ⚔ dot): a unit sits on its factory's tab. */
+/**
+ * Build-bar tab of each build option (for the tab's ⚔ dot): a unit sits on
+ * its factory's tab, and the Goliath on Vehicles (the Gantry isn't one of
+ * the factories the idle watch nags about, so it has no tab of its own).
+ */
 const TAB_OF = (key: string): "build" | FactoryTab => {
   if (key.startsWith("b:")) return "build";
-  return FACTORY_TAB[UNITS[key.slice(2) as UnitKind].builtAt] ?? "ground";
+  const kind = key.slice(2) as UnitKind;
+  if (kind === "goliath") return "ground";
+  return FACTORY_TAB[UNITS[kind].builtAt] ?? "ground";
 };
 
 /** Build-bar tabs, as the HUD names them (src/ui/hud.ts). */
@@ -56,8 +65,10 @@ const DEFENCES = (Object.keys(COUNTERS) as (UnitKind | BuildingKind)[]).filter((
 /** One-time tips offered when the selection calls for them (CommandUi.update). */
 const SELECTION_HINTS: [string, string][] = [
   ["squads", "Squads: hold 1, 2 or 3 to save the selected units. Tap it to select them, double-tap to fly there."],
-  ["infantry", "Infantry cross woods at full speed and take half damage there. Keep them clear of Titans: they get crushed."],
-  ["condor", "Condor: select squads, then tap the Condor to load them. Long-press the map (or tap an island) to fly there and drop them, or tap ⇣ Unload."]
+  ["infantry", "Infantry cross woods at full speed and take half damage there. Keep them clear of Mastodons: they get crushed."],
+  ["condor", "Condor: select squads, then tap the Condor to load them. Long-press the map (or tap an island) to fly there and drop them, or tap ⇣ Unload."],
+  ["goliath", `⚓ Anchor (G) to take scrap, train squads and build within ${GOLIATH.buildRing} tiles. Pack up to move.`],
+  ["lift", "Two empty Condors lift a Goliath: tap your Goliath to hook on, then long-press where to set it down."]
 ];
 
 interface SquadEl {
@@ -256,10 +267,12 @@ export class CommandUi {
   }
 
   /**
-   * Offer a once-per-device hint ("squads", "place", "infantry", "condor") to
-   * the HUD's hint queue; it counts as seen only once it is shown, and only
-   * while it still applies (a group selected / a building being placed /
-   * infantry or a Condor selected). Safe to call every frame.
+   * Offer a once-per-device hint ("squads", "place", "infantry", "condor",
+   * "goliath", "lift") to the HUD's hint queue; it counts as seen only once
+   * it is shown, and only while it still applies (a group selected / a
+   * building being placed / infantry, a Condor or a Goliath selected / two
+   * empty Condors selected while a Goliath could be lifted). Safe to call
+   * every frame.
    */
   hint(id: string, msg: string): void {
     if (this.h.spectator || this.hints.has(id)) return;
@@ -269,7 +282,11 @@ export class CommandUi {
       id: `cmd-${id}`,
       msg,
       priority:
-        id === "place" ? HINTS.priority.placement : id === "infantry" || id === "condor" ? HINTS.priority.transport : HINTS.priority.squads,
+        id === "place"
+          ? HINTS.priority.placement
+          : id === "infantry" || id === "condor"
+            ? HINTS.priority.transport
+            : id === "goliath" || id === "lift" ? HINTS.priority.goliath : HINTS.priority.squads,
       ttlS: 20,
       valid,
       onShow: () => this.seen(id)
@@ -287,13 +304,32 @@ export class CommandUi {
         return this.selecting(isInfantry);
       case "condor":
         return this.condorMoment();
-      default: {
-        // squads: a real group (two or more, harvesters aside)
+      case "goliath":
+        return ctrl.goliathsSelected().length > 0;
+      case "lift":
+        return this.liftMoment();
+      case "squads": {
+        // a real group (two or more, harvesters aside)
         let army = 0;
         for (const uid of ctrl.selectedUnits) if (w.units.get(uid)?.kind !== "harvester") army++;
         return army >= 2;
       }
+      default:
+        return false;
     }
+  }
+
+  /** The lift tip's moment: two empty Condors selected while we have a Goliath walking. */
+  private liftMoment(): boolean {
+    const w = this.h.world;
+    let empty = 0;
+    for (const id of this.h.ctrl.selectedUnits) {
+      const u = w.units.get(id);
+      if (u && u.faction === PLAYER && canCarry(u)) empty++;
+    }
+    if (empty < 2) return false;
+    for (const u of w.units.values()) if (u.goliath && u.faction === PLAYER && canWalk(u)) return true;
+    return false;
   }
 
   /** Is a unit of a kind matching `pred` selected? */

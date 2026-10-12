@@ -57,7 +57,9 @@ try {
     console.log(`⚠ diverged at tick ${res.divergedAt}`);
     failed = true;
   } else console.log(`hash trail: ${record.hashes.filter(([t]) => t <= end).length} checks, all match`);
-  if (res.tick !== end || res.winner !== want) failed = true;
+  // (a Robot Love draw: the world says "draw", the record a null winner with reason "love")
+  const got = res.winner === "draw" ? null : res.winner;
+  if (res.tick !== end || got !== want) failed = true;
   if (errors.length) {
     console.log("page errors:", errors);
     failed = true;

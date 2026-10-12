@@ -1,8 +1,9 @@
 import { BUILDINGS, POWERS, TICK_RATE, UNITS } from "../balance";
 import { isVisible, knownBuildings } from "../fog";
+import { canWalk } from "../goliath";
 import { calldownBlocker, isStunned, powerStatus } from "../powers";
 import type { BuildingKind, Calldown, Command, Faction, PowerKind, Unit, World } from "../types";
-import { dist, hqOf, moveClassOf, passable, regionAt } from "../world";
+import { dist, domainOf, hqOf, moveClassOf, passable, regionAt } from "../world";
 import type { AiMode, AiState, Difficulty } from "./commander";
 import { seenEnemies } from "./intel";
 import { cos, hypot, sin } from "../fmath";
@@ -69,6 +70,9 @@ export function dodgeCalldowns(w: World, faction: Faction, s: AiState): Command[
     const reach = c.radius + 0.7;
     for (const u of w.units.values()) {
       if (u.faction !== faction) continue;
+      // (not a Goliath that can't walk off — a move packs a dug-in one up — nor a lift: a move to
+      // one of its Condors would fly the Goliath off course)
+      if (!canWalk(u) || u.order.type === "lift") continue;
       const d = hypot(u.x - c.x, u.y - c.y);
       if (d > reach) continue;
       // radially out; from dead centre, back toward home
@@ -196,7 +200,12 @@ function podSite(w: World, faction: Faction, x: number, y: number): { x: number;
 }
 
 const value = (us: Unit[]) => us.reduce((v, u) => v + UNITS[u.kind].cost, 0);
-const PRODUCTION: BuildingKind[] = ["fab-plant", "airpad", "assembly-bay", "tech-lab"];
+const PRODUCTION: BuildingKind[] = ["fab-plant", "airpad", "assembly-bay", "tech-lab", "gantry"];
+/** A Sky Hammer's worth of a building it catches: production 1.5, a Gantry with a Goliath on the cradle (all that progress lost) 3. */
+const hammerWorth = (w: World, kb: { id: number; kind: BuildingKind }): number =>
+  kb.kind === "gantry" && w.buildings.get(kb.id)?.queue[0]?.kind === "goliath"
+    ? 3
+    : PRODUCTION.includes(kb.kind) ? 1.5 : kb.kind === "hq" ? 1.2 : 1;
 
 /**
  * One decision pass's calldowns: at most one meter power, plus the Sky
@@ -250,9 +259,20 @@ export function planCalldowns(w: World, faction: Faction, s: AiState, ctx: Calld
 
   // --- Barrage: the best visible ground clump (Easy never shells) ---------
   if (s.difficulty !== "easy" && ready("barrage")) {
-    const ground = visibleEnemies.filter((u) => UNITS[u.kind].domain === "ground");
+    const ground = visibleEnemies.filter((u) => domainOf(u) === "ground"); // (a Goliath on a lift is in the air)
     const clump = bestClump(ground, BARRAGE_SPREAD, (u) => UNITS[u.kind].cost * (isStunned(w, u.id) ? 1.5 : 1));
     if (clump && clump.value >= BARRAGE_MIN && fire("barrage", clump.x, clump.y)) return cmds;
+  }
+
+  // --- an enemy Goliath being mended: an EMP blocks its repair and freezes its Menders
+  // (only from surplus charge, and with our units there to make the most of it)
+  if (ready("emp") && w.powers.meter[faction] >= OFFENCE_RESERVE) {
+    for (const e of visibleEnemies) {
+      if (!e.goliath || isStunned(w, e.id)) continue;
+      const menders = visibleEnemies.filter((o) => UNITS[o.kind].heal && hypot(o.x - e.x, o.y - e.y) <= 3).length;
+      if (menders < 2 || value(ctx.army.filter((u) => dist(u.x, u.y, e.x, e.y) <= 9)) < 550) continue;
+      if (fire("emp", e.x, e.y)) return cmds;
+    }
   }
 
   // --- offence: knock out the defences in front of a wave -----------------
@@ -324,7 +344,7 @@ function hammerTarget(w: World, faction: Faction, visibleEnemies: Unit[]): { x: 
         const dx = Math.max(k.tx - x, 0, x - (k.tx + size));
         const dy = Math.max(k.ty - y, 0, y - (k.ty + size));
         if (hypot(dx, dy) > R - 0.2) continue;
-        v += PRODUCTION.includes(k.kind) ? 1.5 : k.kind === "hq" ? 1.2 : 1;
+        v += hammerWorth(w, k);
       }
       // must still catch the production building we aimed for
       const size = BUILDINGS[kb.kind].size;

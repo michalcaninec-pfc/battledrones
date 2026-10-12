@@ -78,7 +78,7 @@ describe("medals", () => {
       bestUnitKills: AWARDS.aceKills,
       stats: { blue: stats({ unitsKilled: AWARDS.exterminatorKills, buildingsKilled: AWARDS.wreckingBuildings }), red: stats() },
       deaths: [
-        ...kills(AWARDS.giantTitans, { unitKind: "titan" }),
+        ...kills(AWARDS.giantMastodons, { unitKind: "mastodon" }),
         ...kills(AWARDS.airKills, { unitKind: "wasp" }),
         ...kills(AWARDS.wallKills, { byBuilding: true })
       ]
@@ -87,7 +87,7 @@ describe("medals", () => {
   });
 
   it("only the enemy's losses count toward kill medals", () => {
-    const own = recap({ deaths: kills(40, { faction: "blue", unitKind: "titan", byBuilding: true }) });
+    const own = recap({ deaths: kills(40, { faction: "blue", unitKind: "mastodon", byBuilding: true }) });
     expect(computeMedals(own)).toEqual([]);
   });
 

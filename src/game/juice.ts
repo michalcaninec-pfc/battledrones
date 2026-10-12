@@ -192,7 +192,9 @@ export function shakeFor(ev: Pick<DeathEvent, "unitKind" | "buildingKind">): { m
     if (ev.buildingKind === "hq") return { ms: 600, intensity: 0.009 };
     return { ms: 160 + size * 90, intensity: 0.0015 + size * 0.0018 };
   }
-  if (ev.unitKind === "titan" || ev.unitKind === "hornet") return { ms: 140, intensity: 0.003 };
+  // (a Goliath's death is the jolt of its reactor going: its topple slams down harder, render/goliath.ts)
+  if (ev.unitKind === "goliath") return { ms: 320, intensity: 0.005 };
+  if (ev.unitKind === "mastodon" || ev.unitKind === "hornet") return { ms: 140, intensity: 0.003 };
   const size = ev.unitKind ? UNITS[ev.unitKind].radius * 2 : 0.8;
   return { ms: 90, intensity: 0.0012 * size };
 }

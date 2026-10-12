@@ -77,7 +77,7 @@ function goalIcon(g: Goal): string {
   }
 }
 
-/** Pill shorthand for a goal: "Turrets 2/2", "⏱ 1:12", "✝ 2/6", "🏚 0/1", "Titans 1/2". */
+/** Pill shorthand for a goal: "Turrets 2/2", "⏱ 1:12", "✝ 2/6", "🏚 0/1", "Mastodons 1/2". */
 function compact(g: Goal, e: GoalEval): string {
   switch (g.type) {
     case "within":

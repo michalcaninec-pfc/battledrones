@@ -25,6 +25,8 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import * as balance from "../src/sim/balance";
 import { STRATEGIES, type StrategyName } from "../src/sim/ai/commander";
 import { CONDOR_AI } from "../src/sim/ai/condor";
+import { GOLIATH_AI } from "../src/sim/ai/goliath";
+import { MENDER_AI } from "../src/sim/ai/menders";
 import { AIRLIFT } from "../src/sim/ai/airlift";
 import { MAPS } from "../src/sim/maps";
 import type { Faction } from "../src/sim/types";
@@ -40,7 +42,7 @@ function arg(name: string): string | undefined {
 
 function applyTune(json: string | undefined): void {
   if (!json) return;
-  const roots: Record<string, unknown> = { ...balance, STRATEGIES, CONDOR_AI, AIRLIFT, MAP: Object.fromEntries(MAPS.map((m) => [m.id, m])) };
+  const roots: Record<string, unknown> = { ...balance, STRATEGIES, CONDOR_AI, GOLIATH_AI, MENDER_AI, AIRLIFT, MAP: Object.fromEntries(MAPS.map((m) => [m.id, m])) };
   for (const [path, v] of Object.entries(JSON.parse(json) as Record<string, unknown>)) {
     const parts = path.split(".");
     let o = roots as Record<string, unknown>;

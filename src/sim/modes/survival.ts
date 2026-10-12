@@ -185,14 +185,14 @@ export const THEME_NAMES: Record<WaveTheme, string> = {
 /** What beats each theme (shown to the player ahead of the wave). */
 export const THEME_COUNTERS: Record<WaveTheme, string> = {
   air: "Flak, Turrets, SAMs, Raptors",
-  armour: "Lancers, Titans, Wasps",
+  armour: "Lancers, Mastodons, Wasps",
   artillery: "rush the guns with Stingers, Wasps",
   mixed: "a mixed army, Turrets",
   swarm: "Mortars, Turrets, Hornets, Sniper Teams",
   boss: "everything you've got"
 };
 
-const BOSS_NAMES = ["Titan Spearhead", "Bomber Wing", "Elite Strike Force"];
+const BOSS_NAMES = ["Mastodon Spearhead", "Bomber Wing", "Elite Strike Force"];
 /** The regular theme each boss grows out of: the four waves before it always include one. */
 const BOSS_PREVIEW: RegularTheme[] = ["armour", "air", "mixed"];
 
@@ -212,7 +212,7 @@ const POOLS: Record<RegularTheme, Pool> = {
   armour: [
     { kind: "stinger", weight: 5 },
     { kind: "lancer", weight: 2, from: 3 },
-    { kind: "titan", weight: 2, from: 4 }
+    { kind: "mastodon", weight: 2, from: 4 }
   ],
   artillery: [
     { kind: "mortar", weight: 4, maxShare: 0.6 },
@@ -239,12 +239,12 @@ const POOLS: Record<RegularTheme, Pool> = {
 
 /**
  * Boss waves: a core of heavy hitters plus escorts, all one rank up. The
- * ground bosses bring infantry along: Rocket Squads walk with the Titans,
+ * ground bosses bring infantry along: Rocket Squads walk with the Mastodons,
  * and the Elite Strike Force fields every arm.
  */
 const BOSS_POOLS: { core: UnitKind; share: number; escorts: Pool }[] = [
   {
-    core: "titan",
+    core: "mastodon",
     share: 0.55,
     escorts: [
       { kind: "stinger", weight: 3 },
@@ -258,7 +258,7 @@ const BOSS_POOLS: { core: UnitKind; share: number; escorts: Pool }[] = [
     core: "lancer",
     share: 0.3,
     escorts: POOLS.mixed.concat([
-      { kind: "titan", weight: 2 },
+      { kind: "mastodon", weight: 2 },
       { kind: "hornet", weight: 1 },
       { kind: "trooper", weight: 1, maxShare: 0.15 },
       { kind: "rocket-squad", weight: 1, maxShare: 0.15 }
@@ -581,6 +581,11 @@ export function waveUnitsLeft(w: World): number {
 export function tickSurvival(w: World): void {
   const s = w.survival;
   if (!s || w.winner) return;
+  // Last Stand is a base to hold: the run ends when the HQ falls, Goliath or not
+  if (!hqOf(w, s.defender)) {
+    w.winner = attacker(s);
+    return;
+  }
   const warnTicks = SURVIVAL.warn * TICK_RATE;
 
   // the field is clear: pay the bonus and bring the next wave forward

@@ -13,7 +13,7 @@ Inputs  (art/raw/*.webp, RGBA, blue team colours, everything "facing north"):
     units      harvester (L empty / R full), scout, wasp, raptor, hornet, mender
                (mender is drawn facing south -> rotated 180 degrees), and hull+turret
                pairs (L hull with empty turret ring / R turret): stinger,
-               flak-crawler, mortar, titan, lancer
+               flak-crawler, mortar, mastodon, lancer
     buildings  hq, fab-plant, airpad, tech-lab, depot, and base+head pairs
                (L base with empty mount / R rotating head): turret, sam-site, radar
     sheets     rubble (2x2), decals (3x2), scrap (3x2), crystal (3x2),
@@ -97,7 +97,7 @@ UNIT_SIZES = {
     "stinger": 0.95,
     "flak-crawler": 1.0,
     "mortar": 1.15,
-    "titan": 1.45,
+    "mastodon": 1.45,
     "lancer": 1.05,
     "wasp": 1.0,
     "raptor": 1.15,
@@ -105,9 +105,9 @@ UNIT_SIZES = {
     "mender": 0.85,
 }
 SINGLE_UNITS = ["scout", "wasp", "raptor", "hornet", "mender"]
-TURRET_UNITS = ["stinger", "flak-crawler", "mortar", "titan", "lancer"]
+TURRET_UNITS = ["stinger", "flak-crawler", "mortar", "mastodon", "lancer"]
 UNIT_ORDER = [
-    "harvester", "scout", "stinger", "flak-crawler", "mortar", "titan", "lancer",
+    "harvester", "scout", "stinger", "flak-crawler", "mortar", "mastodon", "lancer",
     "wasp", "raptor", "hornet", "mender",
 ]
 ROTATE_180 = {"mender", "scout"}  # drawn facing south (mender arms, scout camera eye)

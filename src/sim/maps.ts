@@ -8,6 +8,7 @@ import { applyMutators, applySpawnRank, bannedBy, makeRules, rulesOf, type Mutat
 import { setupOp } from "./ops";
 import { dropPoint, stowAboard } from "./transport";
 import { setupLifeline } from "./lifeline";
+import { nomadStart } from "./goliath";
 import { hypot } from "./fmath";
 
 /**
@@ -530,6 +531,12 @@ export function createMapWorld(id: string, opts: MatchOptions = {}): World {
   if (mutators.length) applyMutators(w, mutators);
   const skirmish = !opts.survival && !opts.op;
   if (skirmish) applyMapRules(w, def);
+  if (rulesOf(w).islands) {
+    // home land outlives the HQ (it falls, or Nomads never builds one): world.ts onHomeLand
+    const tile = (x: number, y: number): [number, number] => [x + (hs >> 1), y + (hs >> 1)];
+    w.rules!.homeTiles = { blue: tile(hx, hy), red: tile(rx, ry) };
+  }
+  if (skirmish && rulesOf(w).nomads) nomadStart(w); // (the HQs become anchored Goliaths)
   for (const u of squads) applySpawnRank(w, u); // (Veterans: it rolls out ranked like every combat unit)
   // Airborne: a Condor and the other two squads, parked round the starting one
   // (the island map's Condor too)

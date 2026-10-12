@@ -14,11 +14,11 @@ differs from the draft, and why:
   Now Stingers win by 0.15 and Snipers by 0.37.
 - **Rocket Squad: 210 HP, ×1.5 vs air** (draft 180, ×0.8). At the draft
   numbers they lost to Hornets by 0.59, because each bomb splashes several
-  squads. Now they beat Hornets by 0.31 and Titans by 0.69; two Sniper
+  squads. Now they beat Hornets by 0.31 and Mastodons by 0.69; two Sniper
   shots still wipe one.
-- **Cannon vs infantry ×0.4** (draft ×0.6). At ×0.6 Titans beat Troopers
+- **Cannon vs infantry ×0.4** (draft ×0.6). At ×0.6 Mastodons beat Troopers
   by 0.41 cost for cost, and any Trooper buff that closed the gap made
-  Troopers beat Stingers again. At ×0.4 Titans only edge them out (+0.13,
+  Troopers beat Stingers again. At ×0.4 Mastodons only edge them out (+0.13,
   against +0.61–0.88 over vehicle armies) and lose hard to Rocket Squads
   (−0.69).
 - **Every side starts with a Trooper Squad** beside its HQ (a later
@@ -33,7 +33,7 @@ differs from the draft, and why:
   - Rush keeps 5 harvesters (was 4) and builds its Bay second.
   - Balanced and Rush keep 25% and 40% of their army value in infantry.
   - Boom's Depot moves from 2nd to 4th in its build.
-  - Ironclad attacks at 1400 (was 1500), with one Rocket Squad per Titan.
+  - Ironclad attacks at 1400 (was 1500), with one Rocket Squad per Mastodon.
   - Air Swarm, Skyforce and (since the review fixes) Boom build a Bay for
     Rocket Squads once they see heavy armour.
 
@@ -114,13 +114,13 @@ Add an `infantry` column and a `precision` row to `DAMAGE_VS`:
 | multiplier     | 0.6   | 0.4    | 0.25  | 0.15      |
 
 Mortars, Hornets (explosive) and Turrets and Stingers (kinetic) handle
-infantry. Titans and Lancers are poor against them.
+infantry. Mastodons and Lancers are poor against them.
 
 ## Units
 
 | | Trooper Squad | Rocket Squad | Sniper Team |
 |---|---|---|---|
-| Role (tooltip) | Cheap rifle bots. Hit ground and air. Take cover in woods. | Anti-armour rockets. Kill Titans and Hornets. Weak vs infantry. | Long-range marksmen. Delete infantry. Useless vs vehicles. |
+| Role (tooltip) | Cheap rifle bots. Hit ground and air. Take cover in woods. | Anti-armour rockets. Kill Mastodons and Hornets. Weak vs infantry. | Long-range marksmen. Delete infantry. Useless vs vehicles. |
 | Robots | 5 | 3 | 2 |
 | Cost | 100 | 175 | 200 |
 | HP | 225 | 180 | 120 |
@@ -173,7 +173,7 @@ Role: "Builds robot infantry."
   against 0.7 for vehicles.
 - **Sniper concealment:** a Sniper Team in Woods is only visible to enemies
   within 3 tiles, until 2 s after it fires.
-- **Crushing:** a Titan moving through a squad deals 30 HP/s to it.
+- **Crushing:** a Mastodon moving through a squad deals 30 HP/s to it.
   Infantry step aside from friendly vehicles.
 - **Uplinks:** infantry capture 2× faster.
 - **Crates:** infantry can pick up supply crates.
@@ -183,10 +183,10 @@ Role: "Builds robot infantry."
 ## AI
 
 - **Counters:** add infantry to the seen-composition tallies (`seenInfantry`).
-  Answer with Mortars, Turrets or a Sniper Team, and answer Titans with
+  Answer with Mortars, Turrets or a Sniper Team, and answer Mastodons with
   Rocket Squads.
 - **Build orders:** Balanced adds an Assembly Bay after its Tech Lab. Rush
-  opens with Troopers. Ironclad pairs Titans with Rocket escorts.
+  opens with Troopers. Ironclad pairs Mastodons with Rocket escorts.
 - **Condor:** Rush and Balanced send one loaded Condor at harvester lines
   as a harass option (every personality under Airborne or Infantry War).
   With every harvester line covered by anti-air, an assault under way gets

@@ -205,7 +205,7 @@ async function replayCmd() {
   const res = replay(r);
   console.log(`${basename(file)}: ${r.map} seed ${r.seed}, ${who(r, "blue")} vs ${who(r, "red")}: ${verdict(r)}`);
   const w = res.world;
-  console.log(`replayed to ${clock(w.tick)}: ${w.winner ? `${w.winner} wins` : "no winner"}; ${res.checked} hash checks, ${res.divergedAt === null ? "all match" : `⚠ diverged at ${clock(res.divergedAt)}`}`);
+  console.log(`replayed to ${clock(w.tick)}: ${w.winner === "draw" ? "a draw" : w.winner ? `${w.winner} wins` : "no winner"}; ${res.checked} hash checks, ${res.divergedAt === null ? "all match" : `⚠ diverged at ${clock(res.divergedAt)}`}`);
   if (res.divergedAt !== null) process.exitCode = 2;
 }
 

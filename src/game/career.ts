@@ -68,7 +68,9 @@ export function rankOf(xp: number): RankInfo {
 export const XP = {
   win: 100,
   loss: 30,
-  /** A loss pays in full only after this long (no farming by quitting fast). */
+  /** A Robot Love draw: more than a loss, less than a win. */
+  draw: 60,
+  /** A loss (or a draw) pays in full only after this long (no farming by quitting fast). */
   lossFullSecs: 300,
   medal: 25,
   /** Last Stand: per wave survived. */
@@ -103,6 +105,8 @@ export interface MatchResult {
   mapId: string;
   difficulty: string;
   won: boolean;
+  /** Robot Love: nobody won (two Goliaths fell in love). Never set with `won`; counts as neither a win nor a loss. */
+  drawn?: boolean;
   secs: number;
   buildingsLost: number;
   medals: MedalId[];
@@ -137,8 +141,10 @@ export function xpLines(r: MatchResult): XpLine[] {
   } else if (r.won) {
     lines.push({ label: `Victory · ${diffLabel(r.difficulty)}`, xp: Math.round(XP.win * mult) });
   } else {
+    // (a short match pays a fraction, a draw as a loss: no farming XP by quitting, or by a quick Robot Love)
     const k = Math.max(0.2, Math.min(1, r.secs / XP.lossFullSecs));
-    lines.push({ label: `Defeat · ${diffLabel(r.difficulty)}`, xp: Math.round(XP.loss * mult * k) });
+    if (r.drawn) lines.push({ label: `Draw · ${diffLabel(r.difficulty)}`, xp: Math.round(XP.draw * mult * k) });
+    else lines.push({ label: `Defeat · ${diffLabel(r.difficulty)}`, xp: Math.round(XP.loss * mult * k) });
   }
   if (r.medals.length > 0)
     lines.push({ label: `${r.medals.length} medal${r.medals.length === 1 ? "" : "s"}`, xp: XP.medal * r.medals.length });
@@ -279,13 +285,14 @@ export function applyResult(c0: CareerData, r: MatchResult, day = todayIndex(), 
   if (r.kind === "op") {
     /* ops keep their own records: no skirmish W/L, map stars or Last Stand totals */
   } else if (r.kind === "skirmish") {
+    // (a draw is neither)
     if (r.won) c.wins++;
-    else c.losses++;
+    else if (!r.drawn) c.losses++;
     const rec = c.records[key] ?? { w: 0, l: 0, bestSecs: null };
     if (r.won) {
       rec.w++;
       if (r.mutators.length === 0 && r.daily === null) rec.bestSecs = rec.bestSecs === null ? r.secs : Math.min(rec.bestSecs, r.secs);
-    } else rec.l++;
+    } else if (!r.drawn) rec.l++;
     c.records[key] = rec;
     const add = starsFor(r);
     if (add) c.stars[key] = starsBefore | add;
@@ -424,6 +431,7 @@ export function settleMatch(w: World, meta: MatchMeta): Settlement {
     mapId: w.mapId,
     difficulty: meta.difficulty,
     won: op ? w.winner === meta.pov : !w.survival && w.winner === meta.pov,
+    ...(!op && !w.survival && w.winner === "draw" ? { drawn: true } : {}),
     secs: Math.round(recap.secs),
     buildingsLost: w.factions[meta.pov].stats.buildingsLost,
     medals: op ? [] : computeMedals(recap),

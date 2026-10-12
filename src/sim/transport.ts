@@ -57,8 +57,9 @@ export function stowAboard(w: World, c: Unit, squad: Unit): void {
   c.passengers!.push(squad);
 }
 
-/** Seats left aboard a transport (0 for anything that carries nothing). */
+/** Seats left aboard a transport (0 for anything that carries nothing, and for a Condor lifting a Goliath: lift.ts). */
 export function freeSeats(c: Unit): number {
+  if (c.order.type === "lift") return 0;
   return Math.max(0, (UNITS[c.kind].capacity ?? 0) - (c.passengers?.length ?? 0));
 }
 

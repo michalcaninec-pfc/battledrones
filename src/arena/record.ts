@@ -48,7 +48,13 @@ export interface RoundLog {
 export interface BattleEnd {
   tick: number;
   winner: Faction | null;
-  reason: "hq" | "time" | "aborted";
+  /** "hq": a side was beaten (its HQ and every Goliath gone); "love": a Robot Love draw (no winner). */
+  reason: "hq" | "time" | "aborted" | "love";
+}
+
+/** How a decided world ends a record: a side won, or (Robot Love) nobody did. */
+export function endOf(tick: number, winner: Faction | "draw"): BattleEnd {
+  return winner === "draw" ? { tick, winner: null, reason: "love" } : { tick, winner, reason: "hq" };
 }
 
 export interface BattleRecord {
@@ -229,7 +235,7 @@ export function resimulate(r: BattleRecord, code: { version?: string | null; com
     if (w.tick % HASH_EVERY === 0) hashes.push([w.tick, worldHash(w)]);
   }
   const end: BattleEnd | null = w.winner
-    ? { tick: w.tick, winner: w.winner, reason: "hq" }
+    ? endOf(w.tick, w.winner)
     : r.end
       ? { tick: w.tick, winner: null, reason: r.end.reason === "aborted" ? "aborted" : "time" }
       : null;

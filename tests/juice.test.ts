@@ -139,7 +139,7 @@ describe("team combat rings", () => {
 
   it("building hits flash the building (hit event carries its id)", () => {
     const w = createWorld(20, 20);
-    spawnUnit(w, "titan", "blue", 5.5, 5.5);
+    spawnUnit(w, "mastodon", "blue", 5.5, 5.5);
     const radar = spawnBuilding(w, "radar", "red", 8, 5);
     const hits: FxEvent[] = [];
     for (let i = 0; i < 30; i++) {
@@ -167,12 +167,12 @@ describe("death cues", () => {
 
   it("scales camera shake with what died and keeps small deaths subtle", () => {
     const stinger = shakeFor({ unitKind: "stinger", buildingKind: null });
-    const titan = shakeFor({ unitKind: "titan", buildingKind: null });
+    const mastodon = shakeFor({ unitKind: "mastodon", buildingKind: null });
     const turret = shakeFor({ unitKind: null, buildingKind: "turret" });
     const fab = shakeFor({ unitKind: null, buildingKind: "fab-plant" });
     const hq = shakeFor({ unitKind: null, buildingKind: "hq" });
     expect(stinger.intensity).toBeLessThan(0.0015);
-    expect(titan.intensity).toBeGreaterThan(stinger.intensity);
+    expect(mastodon.intensity).toBeGreaterThan(stinger.intensity);
     expect(fab.intensity).toBeGreaterThan(turret.intensity);
     expect(hq.intensity).toBeGreaterThan(fab.intensity);
     expect(hq.ms).toBeGreaterThan(stinger.ms);

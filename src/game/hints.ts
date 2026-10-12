@@ -1,8 +1,9 @@
 /**
  * Onboarding hint pacing. A new player has a lot of one-time tips coming
  * their way in the first minutes (the tutorial stages, squads, touch
- * placement, infantry and the Condor, calldowns, salvage), each gated once
- * per device by its own module. Shown as they trigger, several would land at once — usually on top
+ * placement, infantry and the Condor, the Goliath and its lift, calldowns,
+ * salvage), each gated once per device by its own module. Shown as they
+ * trigger, several would land at once — usually on top
  * of the opener roll-out banner. Every one-time hint goes through this queue
  * instead:
  *
@@ -29,7 +30,7 @@ export const HINTS = {
   /** How long a hint stays in the ticker, ms. */
   showMs: 7000,
   /** Priorities (lower first): what the player is doing right now beats the curriculum. */
-  priority: { placement: 0, squads: 1, transport: 1, tutorial: 2, calldowns: 3, salvage: 4 }
+  priority: { placement: 0, squads: 1, transport: 1, goliath: 1, tutorial: 2, calldowns: 3, salvage: 4 }
 } as const;
 
 export interface HintOffer {

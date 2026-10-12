@@ -30,7 +30,7 @@ import { SideLog, type Urgent } from "./events";
 import { clock, enemyOf, frameOf } from "./frame";
 import { briefing, look, observeState, renderObservation } from "./observe";
 import { parseOrders, suggestSpot, type BuildIntent } from "./orders";
-import { HASH_EVERY, worldHash, type BattleRecord, type RoundLog, type SeatInfo, type Usage } from "./record";
+import { HASH_EVERY, endOf, worldHash, type BattleRecord, type RoundLog, type SeatInfo, type Usage } from "./record";
 
 export const ROUND_TICKS = 50;
 /** 20:00 of game time: a battle nobody can finish is a draw. */
@@ -313,7 +313,11 @@ export class Arena {
   result(side: Faction): string {
     const e = this.record.end;
     if (!e) return "The battle is still on.";
-    const how = e.reason === "hq" ? "the enemy HQ fell" : e.reason === "time" ? `time ran out at ${clock(e.tick)}` : "the battle was stopped";
+    const how =
+      e.reason === "hq" ? "the enemy HQ fell"
+      : e.reason === "time" ? `time ran out at ${clock(e.tick)}`
+      : e.reason === "love" ? "two Goliaths fell in love"
+      : "the battle was stopped";
     const verdict = e.winner === null ? "DRAW" : e.winner === side ? "YOU WON" : "YOU LOST";
     const hq = e.reason === "hq" && e.winner !== side ? "your HQ fell" : how;
     return `THE BATTLE IS OVER at ${clock(e.tick)}: ${verdict} (${hq}). No more orders are needed.`;
@@ -358,7 +362,7 @@ export class Arena {
         if (w.tick % HASH_EVERY === 0) this.record.hashes.push([w.tick, worldHash(w)]);
       }
       this.logRound(start);
-      if (w.winner) this.record.end = { tick: w.tick, winner: w.winner, reason: "hq" };
+      if (w.winner) this.record.end = endOf(w.tick, w.winner);
       else if (w.tick >= this.maxTicks) this.record.end = { tick: w.tick, winner: null, reason: "time" };
     }
     this.record.tick = w.tick;

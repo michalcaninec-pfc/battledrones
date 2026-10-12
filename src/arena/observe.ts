@@ -80,7 +80,7 @@ export interface Observation {
   strikes: { id: number; ours: boolean; power: string; x: number; y: number; radius: number; landsIn: number }[];
   powers: { name: string; cost: number; status: string }[];
   wrecks: { x: number; y: number; value: number; hot: boolean }[];
-  winner: Faction | null;
+  winner: Faction | "draw" | null;
 }
 
 const pct = (hp: number, max: number) => Math.max(1, Math.round((100 * hp) / max));
@@ -118,6 +118,8 @@ function orderText(w: World, fr: Frame, u: Unit): string {
       return `boarding #${o.carrierId}`;
     case "unload":
       return `dropping at ${p(o.x, o.y)}`;
+    case "lift":
+      return `lifting #${o.goliathId}`;
   }
 }
 
@@ -249,7 +251,7 @@ export function renderObservation(o: Observation, x: ObserveExtras): string {
     `ROUND ${x.round}/${x.lastRound}  T ${clock(o.tick)}  scrap ${o.scrap}  charge ${o.meter}/${POWERS.meterMax}` +
       (o.uplinks.length ? `  uplinks ${held}/${o.uplinks.length}` : "")
   );
-  if (o.winner) L.push(o.winner === o.side ? "THE BATTLE IS OVER: YOU WON." : "THE BATTLE IS OVER: YOU LOST.");
+  if (o.winner) L.push(o.winner === "draw" ? "THE BATTLE IS OVER: A DRAW." : o.winner === o.side ? "THE BATTLE IS OVER: YOU WON." : "THE BATTLE IS OVER: YOU LOST.");
   if (o.pending)
     L.push(
       o.pending.ready
@@ -566,7 +568,7 @@ export function briefing(w: World, side: Faction, opts: BriefingOptions): string
       ? `- Supply drops: from 1:30, every 75 s a pair of crates (one each side of the map, same reward) is announced 10 s before it lands. The first non-harvester unit to touch one claims it: scrap, veteran ranks, a field repair, calldown charge or a free Lancer.`
       : "",
     `- Calldowns: a charge meter (0-${POWERS.meterMax}) fills slowly, from Uplinks and mostly from your own losses. Barrage (${POWERS.barrage.cost}: three heavy shells, radius ${POWERS.barrage.radius}), EMP (${POWERS.emp.cost}: stuns everything in radius ${POWERS.emp.radius} for ${POWERS.emp.stun} s), Drop Pod (${POWERS.droppod.cost}: 2 Stingers and a Flak Crawler, or 2 Lancers and a Flak with a Tech Lab, onto ground you can see), and the Sky Hammer (free, online at ${clock(POWERS.hammer.unlock * TICK_RATE)} then every ${POWERS.hammer.cooldown} s: a huge strike, radius ${POWERS.hammer.radius}). Each has a cooldown. Every calldown is telegraphed to both sides before it lands, so move out of enemy strike circles.`,
-    `- Infantry (Trooper, Rocket and Sniper squads from the Assembly Bay) fight best in woods. A Condor (Airpad) carries 2 squads anywhere: "board" then "unload". Titans crush infantry they drive over.`,
+    `- Infantry (Trooper, Rocket and Sniper squads from the Assembly Bay) fight best in woods. A Condor (Airpad) carries 2 squads anywhere: "board" then "unload". Mastodons crush infantry they drive over.`,
     `- Aircraft fly over everything. Only units and buildings whose "hits" column says air or both can shoot them.`,
     ``,
     `TOOLS. observe() shows your state each round (the arena also hands it to you at the start of each round). look(x, y, r) shows a close-up map. orders([...]) gives orders; each comes back "ok" or with the reason it was refused. end_round(notes, radio) ends your turn: notes (up to 2000 characters) are your memory and come back to you next round; radio (up to 120 characters) is heard by spectators only, never by the enemy. wait(rounds) ends your turn and skips the next rounds-1 rounds unless something urgent happens (your HQ attacked, an enemy strike called, enemies near your base).`,

@@ -334,7 +334,7 @@ export function claimCrate(w: World, c: Crate, faction: Faction, collectorId: nu
     case "repair":
       for (const u of near(D.repairRadius)) {
         const max = UNITS[u.kind].hp;
-        if (u.hp >= max) continue;
+        if (u.hp >= max || u.goliath) continue; // (only Menders repair a Goliath)
         const healed = Math.min(max - u.hp, max * D.repairShare);
         u.hp += healed;
         amount += healed;

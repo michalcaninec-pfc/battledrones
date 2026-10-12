@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { BuildingKind, Faction, UnitKind } from "../../sim/types";
 import { ModelBuilder, type Vec3 } from "./builder";
+import { GANTRY_STAGES, GOLIATH_RIG, gantryStage, goliathStatic } from "./goliath";
 import { botStatic, botHeight, J, squadStatic, type BotKind } from "./infantry";
 import { modelMat } from "./materials";
 
@@ -70,6 +71,13 @@ export interface ModelDef {
    * (where squads step off and climb aboard).
    */
   ramp?: { geo: THREE.BufferGeometry; hinge: Vec3; open: number; tip: Vec3 };
+  /**
+   * Further moving parts, by name (the Gantry's scaffold arms, crane jib and
+   * hook, its floor lights lit and dark): each a pivot at `at` in its
+   * parent's space (another part, or the hull), its geometry built about
+   * that pivot. Parents come first.
+   */
+  parts?: Record<string, { geo: THREE.BufferGeometry; at: Vec3; parent?: string }>;
   /** Model height, for labels and bars. */
   height: number;
 }
@@ -223,7 +231,7 @@ const UNIT_MODELS: Record<UnitKind, UnitBuilder> = {
     return { hull, turret: tu.build(), mount: [0, 0.33, 0.14], muzzle: tip, rotors: [], height: 0.6 };
   },
 
-  titan: (t) => {
+  mastodon: (t) => {
     const b = hullB();
     tracks(b, 0.37, 0.21, 0.21, 0.5, -0.27, t.main);
     tracks(b, 0.37, 0.21, 0.21, 0.5, 0.27, t.main);
@@ -415,6 +423,12 @@ const UNIT_MODELS: Record<UnitKind, UnitBuilder> = {
     const rg = rotorGeo(0.07);
     return { hull: b.build(), mount: [0, 0, 0], muzzle: [0, -0.06, 0], rotors: at.map((p) => ({ geo: rg, at: p, axis: "y", speed: 36 })), height: 0.15 };
   },
+
+  // the map draws the Goliath as a posed rig (goliath.ts); this is it standing at rest, every part baked into one
+  goliath: (t) => ({
+    hull: goliathStatic(t === TEAMS.red ? "red" : "blue"),
+    mount: [0, 0, 0], muzzle: [0, 2.1, -0.5], rotors: [], height: GOLIATH_RIG.height
+  }),
 
   // robot infantry: the map draws each squad as an animated rig (infantry.ts); this is the squad at ease
   trooper: (t) => squadModel("trooper", t),
@@ -809,6 +823,116 @@ const BUILDING_MODELS: Record<BuildingKind, (t: Team) => ModelDef> = {
     light(b, [0.88, 0.15, 0.88], 0.05);
     light(b, [-0.88, 0.15, -0.88], 0.05);
     return { hull: b.build(), mount: [0, 0, 0], muzzle: [0, 0.6, 0.2], rotors: [], height: 1.1 };
+  },
+
+  gantry: (t) => {
+    // where a Goliath is built: a 3×3 assembly pad, open front and back (it walks out toward the back of
+    // its base), a cradle in the middle between two lattice scaffold towers whose welding arms reach in
+    // over it, a luffing crane on the east tower, floor lights down the cradle, armour plates racked on the apron
+    const f: Faction = t === TEAMS.red ? "red" : "blue";
+    const b = siteB();
+    b.block(2.9, 0.14, 2.9, [0, 0.07, 0], GM_D, { taper: 0.02, bevel: 0.04 });
+    b.box(2.3, 0.02, 2.82, [0, 0.145, 0], 0x3a3e44);
+    for (const z of [-1.36, 1.36]) for (let i = 0; i < 11; i++) b.box(0.2, 0.03, 0.08, [-1.0 + i * 0.2, 0.16, z], i % 2 ? HAZ_D : HAZ);
+    // the cradle: a plinth, its deck, the foot clamps, team bands down its sides
+    b.block(1.56, 0.12, 1.36, [0, 0.2, 0], GM_L, { bevel: 0.03, edge: 1.35 });
+    b.block(1.36, 0.03, 1.16, [0, 0.27, 0], GM, { bevel: 0.01 });
+    for (const x of [-0.4, 0.4]) {
+      b.block(0.52, 0.07, 0.8, [x, 0.3, -0.06], GM_D, { bevel: 0.02 });
+      for (const z of [-0.36, 0.24]) b.box(0.08, 0.06, 0.08, [x + 0.24, 0.33, z], HAZ);
+    }
+    b.pairBlock(0.05, 0.07, 1.36, [0.8, 0.22, 0], t.main, { bevel: 0.012, edge: 1.4 });
+    // the scaffold towers: posts, rails, braces, two walkways with hazard edges, team caps, footings
+    for (const sx of [-1, 1]) {
+      const xi = sx * 1.2;
+      const xo = sx * 1.4;
+      b.block(0.38, 0.22, 1.92, [sx * 1.3, 0.25, 0], GM, { bevel: 0.03 });
+      for (const x of [xi, xo]) for (const z of [-0.85, 0.85]) b.box(0.07, 2.9, 0.07, [x, 1.6, z], GM_D);
+      for (let k = 0; k < 5; k++) {
+        const y = 0.75 + k * 0.55;
+        for (const x of [xi, xo]) b.box(0.05, 0.05, 1.7, [x, y, 0], GM);
+        for (const z of [-0.85, 0.85]) b.box(0.25, 0.05, 0.05, [sx * 1.3, y, z], GM);
+        // (cross-braced, zig-zagging up the outer face)
+        if (k < 4) b.box(0.035, 0.035, 1.78, [xo, y + 0.27, 0], GM_D, { rot: [k % 2 ? 0.32 : -0.32, 0, 0] });
+      }
+      for (const y of [1.3, 2.4]) {
+        b.block(0.36, 0.04, 1.8, [sx * 1.3, y, 0], GM_L, { bevel: 0.01 });
+        for (let i = 0; i < 9; i++) b.box(0.2, 0.03, 0.03, [xi + sx * 0.02, y + 0.03, -0.8 + i * 0.2], i % 2 ? HAZ_D : HAZ, { rot: [0, Math.PI / 2, 0] });
+      }
+      b.block(0.36, 0.12, 1.86, [sx * 1.3, 3.1, 0], t.main, { bevel: 0.03, edge: 1.45 });
+      b.pairBlock(0.38, 0.05, 0.05, [sx * 1.3, 3.0, 0.93], GM_D);
+      for (const z of [-0.88, 0.88]) b.box(0.07, 0.06, 0.07, [xo, 3.2, z], 0x2a2410);
+      b.box(0.04, 0.5, 0.04, [xi, 0.55, -0.4], AMBER, { glow: 0.6 });
+    }
+    // the crane's mast and cab on the east tower's north end
+    b.block(0.16, 0.6, 0.16, [1.3, 3.45, -0.72], GM_D, { bevel: 0.02 });
+    b.block(0.26, 0.18, 0.26, [1.3, 3.7, -0.72], HAZ, { bevel: 0.03 });
+    b.box(0.2, 0.08, 0.02, [1.3, 3.72, -0.86], AMBER, { glow: 0.6 });
+    // armour plates waiting on a rack in the north-east corner, and spare parts crated in the south-west
+    b.block(0.5, 0.06, 0.34, [0.95, 0.2, -1.12], GM_D, { bevel: 0.01 });
+    for (let i = 0; i < 3; i++) b.block(0.42, 0.05, 0.3, [0.95, 0.26 + i * 0.06, -1.12], i === 2 ? t.main : GM, { rot: [0, 0.08 * i, 0], bevel: 0.012, edge: 1.35 });
+    b.block(0.36, 0.24, 0.3, [-0.95, 0.27, 1.1], GM, { bevel: 0.02 });
+    b.box(0.37, 0.05, 0.31, [-0.95, 0.3, 1.1], HAZ);
+    light(b, [1.38, 0.17, 1.38], 0.05);
+    light(b, [-1.38, 0.17, -1.38], 0.05);
+    const hull = b.build();
+
+    // the welding arms, pivoting on the tower tops: in over the cradle, swung clear along the towers for a rollout
+    const arm = (sx: number) => {
+      const a = partB();
+      a.drum(0.09, 0.08, 0.1, 8, [0, 0, 0], GM_L, { bevel: 0.015 });
+      a.block(0.72, 0.09, 0.12, [-sx * 0.38, 0, 0], GM, { bevel: 0.02 });
+      a.block(0.6, 0.02, 0.1, [-sx * 0.38, 0.055, 0], t.main, { bevel: 0.008 });
+      for (let i = 0; i < 4; i++) a.box(0.12, 0.014, 0.125, [-sx * (0.16 + i * 0.15), -0.05, 0], i % 2 ? HAZ_D : HAZ);
+      a.box(0.07, 0.34, 0.07, [-sx * 0.7, -0.2, 0], GM_D);
+      a.cone(0.035, 0.08, 6, [-sx * 0.7, -0.41, 0], GM_D, { rot: [Math.PI, 0, 0] });
+      a.sphere(0.022, [-sx * 0.7, -0.45, 0], AMBER, { glow: 1, w: 6, h: 4 });
+      return a.build();
+    };
+    // the crane: a jib luffing on the mast, a trolley's cable (a unit length, stretched), the hook block and the plate it carries
+    const jib = partB();
+    jib.box(0.1, 0.1, 1.7, [0, 0, -0.85], GM_D);
+    for (let i = 0; i < 8; i++) jib.box(0.11, 0.11, 0.1, [0, 0, -0.15 - i * 0.2], i % 2 ? HAZ_D : HAZ);
+    jib.block(0.2, 0.16, 0.26, [0, 0, 0.24], GM, { bevel: 0.02 });
+    light(jib, [0, 0.07, -1.68], 0.03);
+    const cable = partB();
+    cable.box(0.015, 1, 0.015, [0, -0.5, 0], TRACK);
+    const hook = partB();
+    hook.block(0.12, 0.08, 0.1, [0, -0.04, 0], GM_D, { bevel: 0.01 });
+    hook.box(0.03, 0.08, 0.03, [0, -0.12, 0], HAZ);
+    const plate = partB();
+    plate.block(0.46, 0.05, 0.32, [0, -0.2, 0], GM, { bevel: 0.012, edge: 1.35 });
+    plate.box(0.3, 0.012, 0.08, [0, -0.17, 0], t.main);
+    for (const x of [-0.18, 0.18]) plate.box(0.008, 0.16, 0.008, [x * 0.5, -0.1, 0], TRACK, { rot: [0, 0, x] });
+    // floor lights down the cradle, lit and dark (glow is baked), and the towers' blinking beacons
+    const lamps = (lit: boolean) => {
+      const l = partB();
+      for (const sx of [-1, 1]) for (let i = 0; i < 7; i++) l.box(0.06, 0.02, 0.1, [sx * 0.92, 0.16, -1.2 + i * 0.4], lit ? AMBER : 0x3a3020, lit ? { glow: 1 } : {});
+      return l.build();
+    };
+    const blink = partB();
+    for (const sx of [-1, 1]) for (const z of [-0.88, 0.88]) blink.box(0.075, 0.065, 0.075, [sx * 1.4, 3.2, z], 0xffb347, { glow: 1 });
+    blink.sphere(0.04, [1.3, 3.83, -0.72], 0xff5a3a, { glow: 1, w: 6, h: 4 });
+    // the Goliath taking shape on the cradle, stage by stage: at its size on the map, facing the way it walks out
+    const s = unitScale("goliath");
+    const m = new THREE.Matrix4().compose(
+      new THREE.Vector3(),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, f === "red" ? 0 : Math.PI, 0)),
+      new THREE.Vector3(s, s, s)
+    );
+    const parts: NonNullable<ModelDef["parts"]> = {
+      armL: { geo: arm(-1), at: [-1.2, 3.02, 0] },
+      armR: { geo: arm(1), at: [1.2, 3.02, 0] },
+      jib: { geo: jib.build(), at: [1.3, 3.84, -0.72] },
+      cable: { geo: cable.build(), at: [0, 0, -1], parent: "jib" },
+      hook: { geo: hook.build(), at: [0, -1, -1], parent: "jib" },
+      plate: { geo: plate.build(), at: [0, 0, 0], parent: "hook" },
+      lightsOn: { geo: lamps(true), at: [0, 0, 0] },
+      lightsOff: { geo: lamps(false), at: [0, 0, 0] },
+      blink: { geo: blink.build(), at: [0, 0, 0] }
+    };
+    for (let i = 0; i < GANTRY_STAGES.length; i++) parts[`stage${i}`] = { geo: gantryStage(f, i).clone().applyMatrix4(m), at: [0, 0.285, 0] };
+    return { hull, mount: [0, 0, 0], muzzle: [0, 1.4, 0], rotors: [], parts, height: 3.3 };
   }
 };
 
@@ -979,6 +1103,44 @@ function rubbleGeo(size: number, seed: number): THREE.BufferGeometry {
   return b.build();
 }
 
+/**
+ * Deterministic scrap pile, what a fallen Goliath scatters (and a Gantry
+ * destroyed mid-build): a low mound of torn metal heaped with the gold and
+ * rust scrap lumps the harvesters haul, a few bent armour plates standing up
+ * out of it (one in the dead side's colour), a girder, a length of pipe, a
+ * cog. About a tile across.
+ */
+function scrapPileGeo(seed: number, t: Team): THREE.BufferGeometry {
+  let s = seed * 7919 + 104729;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const b = new ModelBuilder({ grade: 0.3, ao: [0.1, 0.3] });
+  const lumps = [0x8a6a3a, 0xb08a4a, 0x6e5a40, 0x9a7a44, 0xc9a65a, 0x7a6448];
+  const metal = [GM_D, GM, 0x3c3a37, GM_L];
+  const pick = (a: number[]) => a[Math.floor(rnd() * a.length)]!;
+  const R = 0.46;
+  b.cone(R, 0.2, 7, [0, 0.08, 0], 0x2e2b28, { rot: [0, rnd() * 3, 0], scale: [1, 1, 0.8 + rnd() * 0.3] });
+  for (let i = 0; i < 16; i++) {
+    const a = rnd() * Math.PI * 2;
+    const d = Math.sqrt(rnd()) * R * 0.92;
+    const w = 0.07 + rnd() * 0.09;
+    const y = (1 - d / R) * 0.17 + 0.02;
+    const col = rnd() < 0.62 ? pick(lumps) : pick(metal);
+    b.box(w * 1.3, w * 0.8, w, [Math.cos(a) * d, y + w * 0.3, Math.sin(a) * d], col, { rot: [rnd() * 1.2, rnd() * 3, rnd() * 1.2] });
+  }
+  for (let i = 0; i < 3; i++) {
+    const a = rnd() * Math.PI * 2;
+    const d = 0.08 + rnd() * R * 0.5;
+    const w = 0.16 + rnd() * 0.14;
+    b.block(w, w * 0.75, 0.025, [Math.cos(a) * d, 0.15, Math.sin(a) * d], i === 0 ? t.main : pick(metal), {
+      rot: [(rnd() - 0.5) * 1.1, rnd() * 3, (rnd() - 0.5) * 0.9], bevel: 0.01, edge: 1.35
+    });
+  }
+  b.box(0.04, 0.04, 0.5 + rnd() * 0.25, [(rnd() - 0.5) * 0.4, 0.12, (rnd() - 0.5) * 0.4], 0x45403a, { rot: [rnd() * 0.6 - 0.3, rnd() * 3, rnd() * 0.5] });
+  b.tube(0.035, 0.34, 6, [(rnd() - 0.5) * 0.5, 0.08, (rnd() - 0.5) * 0.5], BARREL, { rot: [rnd() * 0.4, rnd() * 3, 0] });
+  b.drum(0.1, 0.09, 0.04, 8, [(rnd() - 0.5) * 0.45, 0.06, (rnd() - 0.5) * 0.45], GM, { rot: [0.3 + rnd() * 0.4, 0, rnd() * 0.5] });
+  return b.build();
+}
+
 // -------------------------------------------------------------- library ---
 
 export interface ModelInstance {
@@ -990,6 +1152,8 @@ export interface ModelInstance {
   cargo: THREE.Mesh | null;
   /** The Condor's ramp (pivoting at its hinge), else null. */
   ramp: THREE.Object3D | null;
+  /** The model's further moving parts by name (ModelDef.parts), each a pivot holding its mesh. */
+  parts: Record<string, THREE.Object3D>;
   def: ModelDef;
 }
 
@@ -1026,11 +1190,13 @@ export function podDef(f: Faction, open = false): ModelDef {
 
 /** Longest side of each unit in tiles (as the painted sprites were sized), before the 3D readability bump. */
 const UNIT_SIZE: Record<UnitKind, number> = {
-  harvester: 1.15, scout: 0.85, stinger: 0.95, "flak-crawler": 1.0, mortar: 1.15, titan: 1.45,
+  harvester: 1.15, scout: 0.85, stinger: 0.95, "flak-crawler": 1.0, mortar: 1.15, mastodon: 1.45,
   lancer: 1.05, wasp: 1.0, raptor: 1.15, hornet: 1.5, mender: 0.85,
   // (a squad's formation spans about its radius × 2: the robots are modelled at map scale, see unitScale)
   trooper: 0.8, "rocket-squad": 0.8, sniper: 0.7,
-  condor: 1.5
+  condor: 1.5,
+  // (shoulders and pauldrons: it stands over twice as tall, see goliath.ts)
+  goliath: 2.05
 };
 /** Robot infantry is built at map scale (tiles): formations sized to the squad's radius. */
 const MAP_SCALE = new Set<UnitKind>(["trooper", "rocket-squad", "sniper"]);
@@ -1067,6 +1233,15 @@ export function rubbleGeometry(size: number, variant: number): THREE.BufferGeome
     rubbles.set(key, g);
   }
   return g;
+}
+
+/** Scrap pile looks per side (a handful, picked by wreck id). */
+export const PILE_VARIANTS = 4;
+
+/** A scrap pile (see scrapPileGeo) as a model: what render/wrecks.ts draws for a Goliath's scattered salvage. */
+export function pileDef(f: Faction, variant: number): ModelDef {
+  const v = ((variant % PILE_VARIANTS) + PILE_VARIANTS) % PILE_VARIANTS;
+  return def(`pile/${f}/${v}`, () => ({ hull: scrapPileGeo(v + 1, TEAMS[f]), mount: [0, 0, 0], muzzle: [0, 0.2, 0], rotors: [], height: 0.3 }));
 }
 
 /** A mesh using the shared model material (swappable variants). */
@@ -1110,5 +1285,13 @@ export function instance(d: ModelDef, shadows = true): ModelInstance {
     ramp.add(modelMesh(d.ramp.geo, shadows));
     body.add(ramp);
   }
-  return { root, body, turret, rotors, cargo, ramp, def: d };
+  const parts: Record<string, THREE.Object3D> = {};
+  for (const [name, p] of Object.entries(d.parts ?? {})) {
+    const g = new THREE.Group();
+    g.position.set(...p.at);
+    g.add(modelMesh(p.geo, shadows));
+    (p.parent ? parts[p.parent]! : body).add(g);
+    parts[name] = g;
+  }
+  return { root, body, turret, rotors, cargo, ramp, parts, def: d };
 }

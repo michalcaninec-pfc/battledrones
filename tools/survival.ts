@@ -107,7 +107,7 @@ function humanDefender(w0: World): Brain {
       if (b.kind === "fab-plant") {
         if (airThreat && count("flak-crawler") < 2 + Math.floor(st.wave / 3)) kind = "flak-crawler";
         else if (swarmThreat && !unitBlocker(w, "blue", "mortar") && count("mortar") < 2 + Math.floor(st.wave / 4)) kind = "mortar";
-        else if (!unitBlocker(w, "blue", "titan")) kind = army.length % 3 === 0 ? "titan" : army.length % 3 === 1 ? "lancer" : "stinger";
+        else if (!unitBlocker(w, "blue", "mastodon")) kind = army.length % 3 === 0 ? "mastodon" : army.length % 3 === 1 ? "lancer" : "stinger";
         else kind = "stinger";
       } else if (b.kind === "airpad")
         kind = airThreat

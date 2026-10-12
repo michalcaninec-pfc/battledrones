@@ -1,4 +1,5 @@
 import { POWERS, TICK_RATE, UNITS } from "./balance";
+import { hasGoliath } from "./goliath";
 import { areaBlast, strikeDamage } from "./combat";
 import { isExplored, isVisible } from "./fog";
 import { worldRandom } from "./rand";
@@ -105,7 +106,7 @@ const clock = (t: number) => {
 export function powerBlocker(w: World, faction: Faction, power: PowerKind): string | null {
   if (w.winner) return "The battle is over";
   if (rulesOf(w).noCalldowns) return "No calldowns in this match";
-  if (!hqOf(w, faction)) return "Calldowns need an HQ";
+  if (!hqOf(w, faction) && !hasGoliath(w, faction)) return "Calldowns need an HQ or a Goliath";
   if (power === "droppod" && podCrew(w, faction).length === 0) return "Drop Pod is disabled in this match";
   const st = powerStatus(w, faction, power);
   if (st.locked > 0) return `Sky Hammer comes online at ${clock(ticks(POWERS.hammer.unlock))}`;
@@ -209,6 +210,7 @@ export function chargePowers(w: World): void {
   for (const f of FACTIONS) m[f] = Math.min(POWERS.meterMax, m[f]);
 }
 
+/** Who a calldown's kills are credited to: the HQ (so faction stats count them, and no unit takes their XP), else no one (0). */
 const attackerOf = (w: World, f: Faction) => hqOf(w, f)?.id ?? 0;
 
 function impact(w: World, c: Calldown, x: number, y: number, hits: number, unitIds: number[] = []): void {

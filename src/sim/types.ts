@@ -8,7 +8,7 @@ export type UnitKind =
   | "stinger"
   | "flak-crawler"
   | "mortar"
-  | "titan"
+  | "mastodon"
   | "lancer"
   | "wasp"
   | "raptor"
@@ -19,7 +19,13 @@ export type UnitKind =
   | "rocket-squad"
   | "sniper"
   /** Dropship: carries two infantry squads, unarmed. */
-  | "condor";
+  | "condor"
+  /**
+   * Giant walking mech and mobile base (GOLIATH.md, goliath.ts): four weapon
+   * systems it loses as it takes damage, and anchored, a drop-off, a build
+   * ring and infantry training. Built at the Gantry.
+   */
+  | "goliath";
 
 export type BuildingKind =
   | "hq"
@@ -31,7 +37,9 @@ export type BuildingKind =
   | "sam-site"
   | "radar"
   /** Builds robot infantry. */
-  | "assembly-bay";
+  | "assembly-bay"
+  /** Top of the tree: builds the Goliath (one per side, always visible to the enemy). */
+  | "gantry";
 
 /** Armor classes: weapons deal a damage-type-specific multiple vs each. */
 export type ArmorClass = "light" | "medium" | "heavy" | "structure" | "infantry";
@@ -97,7 +105,62 @@ export type UnitOrder =
    * stand on — hover for INFANTRY.unloadHover, then drop every passenger.
    * `hover` is -1 while flying, then counts ticks spent hovering.
    */
-  | { type: "unload"; x: number; y: number; hover: number };
+  | { type: "unload"; x: number; y: number; hover: number }
+  /**
+   * Condor: one of the two carrying Goliath `goliathId` (lift.ts). The lift
+   * moves it; tickMovement leaves it alone.
+   */
+  | { type: "lift"; goliathId: number };
+
+/** The Goliath's weapon systems (goliath.ts). The machine guns never go offline. */
+export type GoliathWeapon = "mortars" | "laser" | "cannons" | "mg";
+
+/** Walking ⇄ anchored, through the timed transitions between them (goliath.ts). */
+export type GoliathMode = "walking" | "anchoring" | "anchored" | "packing";
+
+export interface GoliathWeaponState {
+  /** Firing. False while lost to damage, and through the reboot that brings it back. */
+  online: boolean;
+  /** Ticks left of the reboot that brings it back online (−1: not rebooting). */
+  reboot: number;
+  /** Ticks until this weapon may fire again. */
+  cooldown: number;
+  /** What it is shooting at (picked per weapon), or null. */
+  targetId: number | null;
+  /** Tick it last fired (renderer: recoil, muzzle flash). */
+  firedTick: number;
+}
+
+/** Two Condors carrying a walking Goliath (lift.ts). */
+export interface GoliathLift {
+  /** The two Condors (each on a `lift` order naming this Goliath). */
+  carriers: [number, number];
+  /** "hooking": the Condors are flying in to hook on; "carrying": it is off the ground. */
+  phase: "hooking" | "carrying";
+  /** Where the lift is flying (null: hovering where it is). */
+  dest: { x: number; y: number } | null;
+  /** On arrival at `dest`, set the Goliath down (else hover there). */
+  setDown: boolean;
+}
+
+/** Everything a Goliath carries beyond a plain unit (Unit.goliath; goliath.ts). */
+export interface GoliathState {
+  mode: GoliathMode;
+  /** Ticks left of an anchoring or packing transition (0 once settled). */
+  modeTicks: number;
+  weapons: Record<GoliathWeapon, GoliathWeaponState>;
+  /** Infantry training queue: advances only while anchored. */
+  queue: QueueItem[];
+  rally: { x: number; y: number } | null;
+  /** Two Condors hooking on or carrying it, or null. */
+  lift: GoliathLift | null;
+  /**
+   * Dug in (anchoring, anchored or packing up): the top-left tile of the
+   * GOLIATH.footprint² it stands on, stamped with its id in World.occupancy
+   * so paths go round it like a building. null while it walks.
+   */
+  foot: { tx: number; ty: number } | null;
+}
 
 export interface Unit {
   id: number;
@@ -153,12 +216,16 @@ export interface Unit {
    * away gains nothing.
    */
   free?: boolean;
+  /** Goliath only: its modes, weapon systems, training queue and lift (goliath.ts). Absent on every other unit. */
+  goliath?: GoliathState;
 }
 
 export interface QueueItem {
   kind: UnitKind;
   /** Ticks of build time remaining. */
   remaining: number;
+  /** Scrap paid, when it isn't the kind's list price (a Goliath's escalating cost): what a cancel refunds. */
+  paid?: number;
 }
 
 export interface Building {
@@ -177,6 +244,12 @@ export interface Building {
   damagedTick: number;
   lastAttackerId: number | null;
   firedTick: number;
+  /**
+   * Placed in the build ring of an anchored Goliath, out of normal build range
+   * (goliath.ts). It works like any other building, but never counts as base
+   * for build range: nothing can be built off it. Decided when it is placed.
+   */
+  outpost?: boolean;
 }
 
 /** A building being constructed C&C-style (timer in the "sidebar"). */
@@ -460,11 +533,77 @@ export type FxEvent =
       bailout: boolean;
     }
   | {
-      /** A Titan rolled over enemy squad `id` this tick (crushing, INFANTRY.crushDps). */
+      /** A Mastodon rolled over enemy squad `id` this tick (crushing, INFANTRY.crushDps). */
       type: "crush";
       faction: Faction;
       id: number;
       attackerId: number;
+      x: number;
+      y: number;
+    }
+  | {
+      /**
+       * A Gantry's Goliath build (public: both sides hear it): `started` as a
+       * build begins, `nearlyDone` as it passes GOLIATH.nearlyDone.
+       */
+      type: "goliathBuild";
+      faction: Faction;
+      buildingId: number;
+      stage: "started" | "nearlyDone";
+      x: number;
+      y: number;
+    }
+  | {
+      /** Goliath `id` walked off its Gantry `buildingId` (public). */
+      type: "goliathRollout";
+      faction: Faction;
+      id: number;
+      buildingId: number;
+      x: number;
+      y: number;
+    }
+  | {
+      /** Goliath `id` entered `mode`: anchoring (digging in), anchored, packing (up), walking (free to move). */
+      type: "goliathMode";
+      faction: Faction;
+      id: number;
+      mode: GoliathMode;
+      x: number;
+      y: number;
+    }
+  | {
+      /** A Goliath weapon system went `offline` (damage), started `rebooting` (repaired), or came back `online`. */
+      type: "goliathWeapon";
+      faction: Faction;
+      id: number;
+      weapon: GoliathWeapon;
+      state: "offline" | "rebooting" | "online";
+      x: number;
+      y: number;
+    }
+  | {
+      /**
+       * Two Condors `carrierIds` and Goliath `id` (lift.ts): `hooked` (it left
+       * the ground), `setDown` (put down on purpose), or `dropped` (a Condor
+       * was lost): it fell, `destroyed` over water, sea, lava or rock.
+       */
+      type: "goliathLift";
+      faction: Faction;
+      id: number;
+      carrierIds: number[];
+      state: "hooked" | "setDown" | "dropped";
+      x: number;
+      y: number;
+      destroyed?: boolean;
+    }
+  | {
+      /**
+       * Robot Love: enemy Goliaths `ids` (blue's, red's) came within
+       * GOLIATH.love.range of each other and fell in love; the match ends in
+       * a draw this tick. (x, y) is the point between them, where they meet.
+       */
+      type: "love";
+      ids: [number, number];
       x: number;
       y: number;
     };
@@ -550,6 +689,12 @@ export interface Wreck {
   ttl: number;
   /** Ticks left while it is still too hot to salvage. */
   hot: number;
+  /**
+   * A scrap pile, not a hull: one of the piles a fallen Goliath scatters, or
+   * a half-built one strewn around its destroyed Gantry (goliath.ts). `kind`
+   * is "goliath"; its `id` is fresh (several piles share one dead unit).
+   */
+  pile?: boolean;
 }
 
 /** Commander calldowns (powers.ts): three on the Command meter plus the late-game Sky Hammer. */
@@ -609,8 +754,13 @@ export interface World {
   /** Map objectives: Uplink relays and supply drops (objectives.ts). Empty unless the match enables them. */
   objectives: ObjectiveState;
   factions: Record<Faction, FactionState>;
-  /** null while the match runs; the winning faction once an HQ dies. */
-  winner: Faction | null;
+  /**
+   * null while the match runs; then the winning faction (once a side has lost
+   * its HQ and every Goliath), or "draw" (Robot Love: two enemy Goliaths fell
+   * in love, goliath.ts tickLove). Anything that only asks "is it over?" can
+   * test it for truthiness.
+   */
+  winner: Faction | "draw" | null;
   /** Transient render events emitted this tick (cleared each step). */
   fx: FxEvent[];
   fog: Record<Faction, FactionFog>;
@@ -630,6 +780,8 @@ export interface World {
   ops?: OpsState | null;
   /** Free replacement Condors (lifeline.ts); absent unless the map hands them out. */
   lifeline?: Record<Faction, LifelineSlot> | null;
+  /** Robot Love: the two Goliaths that fell in love and ended the match in a draw, where and when (goliath.ts tickLove). */
+  love?: { ids: [number, number]; x: number; y: number; tick: number } | null;
 }
 
 /** One side's free-Condor clock (lifeline.ts). */
@@ -646,6 +798,7 @@ export type Command =
   | { type: "attack"; faction: Faction; unitIds: number[]; targetId: number }
   | { type: "harvest"; faction: Faction; unitIds: number[]; x: number; y: number }
   | { type: "stop"; faction: Faction; unitIds: number[] }
+  /** `buildingId`: a production building, or an anchored Goliath's unit id (it trains infantry, goliath.ts). */
   | { type: "produce"; faction: Faction; buildingId: number; unit: UnitKind }
   | { type: "cancelProduce"; faction: Faction; buildingId: number; unit: UnitKind }
   | { type: "startBuilding"; faction: Faction; building: BuildingKind }
@@ -663,4 +816,14 @@ export type Command =
    * first; the drop snaps to the nearest tile infantry can stand on), else
    * right where they are.
    */
-  | { type: "unload"; faction: Faction; unitIds: number[]; x?: number; y?: number };
+  | { type: "unload"; faction: Faction; unitIds: number[]; x?: number; y?: number }
+  /** Goliaths `unitIds` dig in where they stand (goliath.ts anchorBlocker says where they can't). */
+  | { type: "anchor"; faction: Faction; unitIds: number[] }
+  /** Anchored (or anchoring) Goliaths `unitIds` pack up to walk again. */
+  | { type: "packUp"; faction: Faction; unitIds: number[] }
+  /**
+   * Two empty Condors `unitIds` hook onto walking Goliath `goliathId` and lift
+   * it (lift.ts). Then `move` flies the lift, `unload` sets it down (at x, y
+   * if given) and `stop` hovers it.
+   */
+  | { type: "lift"; faction: Faction; unitIds: number[]; goliathId: number };

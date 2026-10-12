@@ -1,5 +1,6 @@
-import { BUILDINGS, DAMAGE_VS, UNITS, type ArmedStats } from "../balance";
+import { BUILDINGS, DAMAGE_VS, GOLIATH, UNITS, type ArmedStats } from "../balance";
 import { knownBuildings } from "../fog";
+import { GOLIATH_WEAPONS, weaponReady } from "../goliath";
 import { unitSeenBy } from "../infantry";
 import type { ArmorClass, Domain, Faction, Unit, UnitKind, World } from "../types";
 import { hypot } from "../fmath";
@@ -29,6 +30,28 @@ export function aaWeight(st: ArmedStats): number {
   return Math.min(1, Math.round((10 * st.dps * (st.airMult ?? 1)) / UNITS["flak-crawler"].dps) / 10);
 }
 
+/**
+ * Anti-air worth (aaWeight, in Flak) and range of a unit we see or remember.
+ * A Goliath fights with several weapons (GOLIATH.weapons), so its worth is
+ * that of the ones that can hit aircraft and fire right now — its laser and
+ * machine guns, about 0.8 Flak at 4.5 tiles, down to 0.2 at 3 with the laser
+ * out, or carried on a lift — not its kind's summary numbers (an 8-tile
+ * full Flak). One only remembered (no state to read) counts with all of them.
+ */
+export function unitAntiAir(u: Sighting | Unit): { weight: number; range: number } {
+  if (u.kind !== "goliath") return { weight: aaWeight(UNITS[u.kind]), range: UNITS[u.kind].range };
+  const live = "goliath" in u && u.goliath ? (u as Unit) : null;
+  let dps = 0;
+  let range = 0;
+  for (const k of GOLIATH_WEAPONS) {
+    const st = GOLIATH.weapons[k];
+    if ((st.targets !== "air" && st.targets !== "both") || (live && !weaponReady(live, k))) continue;
+    dps += st.dps * (st.airMult ?? 1);
+    range = Math.max(range, st.range);
+  }
+  return { weight: Math.min(1, Math.round((10 * dps) / UNITS["flak-crawler"].dps) / 10), range };
+}
+
 /** Anti-air (in Flak) covering a spot at least this much keeps drones and dropships away. */
 export const AA_COVER = 0.5;
 
@@ -53,9 +76,8 @@ export type Sighting = Pick<Unit, "id" | "kind" | "x" | "y">;
 export function aaSources(w: World, faction: Faction, seen?: readonly Sighting[]): AaSource[] {
   const out: AaSource[] = [];
   for (const u of seen ?? seenEnemies(w, faction)) {
-    const st = UNITS[u.kind];
-    const weight = aaWeight(st);
-    if (weight > 0) out.push({ x: u.x, y: u.y, reach: st.range + 3, weight });
+    const { weight, range } = unitAntiAir(u);
+    if (weight > 0) out.push({ x: u.x, y: u.y, reach: range + 3, weight });
   }
   for (const kb of knownBuildings(w, faction)) {
     if (kb.kind === "hq") continue;

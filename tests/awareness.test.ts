@@ -224,7 +224,7 @@ describe("inbound warning", () => {
   it("never reveals the fog, and ignores units that can't hurt a base", () => {
     const r = rig();
     // within 12 tiles of the HQ but outside anyone's sight
-    spawnUnit(r.w, "titan", "red", 14, 16);
+    spawnUnit(r.w, "mastodon", "red", 14, 16);
     // visible, but anti-air only / unarmed
     spawnUnit(r.w, "raptor", "red", 21, 8);
     spawnUnit(r.w, "scout", "red", 21, 7);
@@ -233,10 +233,10 @@ describe("inbound warning", () => {
 
   it("names ground raids by their lead kind, and spaces out loud warnings", () => {
     const r = rig();
-    spawnUnit(r.w, "titan", "red", 6, 12);
+    spawnUnit(r.w, "mastodon", "red", 6, 12);
     spawnUnit(r.w, "stinger", "red", 7, 12);
     const [a] = r.tick();
-    expect(a).toMatchObject({ domain: "ground", text: "Enemy Titans inbound", first: true, loud: true });
+    expect(a).toMatchObject({ domain: "ground", text: "Enemy Mastodons inbound", first: true, loud: true });
     expect(a!.advice).toMatch(/Lancers/);
     // a second, separate group a moment later: tracked (arrow), but not shouted
     spawnUnit(r.w, "wasp", "red", 21, 8);
@@ -266,8 +266,8 @@ describe("inbound warning", () => {
 
   it("advice matches the counter web", () => {
     expect(raidAdvice("air", "hornet").advice).toMatch(/Flak/);
-    expect(raidAdvice("ground", "titan").advice).toMatch(/Lancers/);
-    expect(raidAdvice("ground", "titan").advice).toMatch(/Rocket Squads/);
+    expect(raidAdvice("ground", "mastodon").advice).toMatch(/Lancers/);
+    expect(raidAdvice("ground", "mastodon").advice).toMatch(/Rocket Squads/);
     expect(raidAdvice("ground", "mortar").advice).toMatch(/Stingers/);
     expect(raidAdvice("mixed", "wasp").what).toBe("strike force");
     expect(raidAdvice("ground", "trooper")).toEqual({ what: "troops", advice: "Mortars, Turrets or Snipers" });
@@ -367,7 +367,7 @@ describe("tempo safety (drop to 1× when the player must react)", () => {
 });
 
 describe("battle meter", () => {
-  const army = (w: World, f: Faction, n: number, x: number, kind: "stinger" | "titan" = "stinger") =>
+  const army = (w: World, f: Faction, n: number, x: number, kind: "stinger" | "mastodon" = "stinger") =>
     Array.from({ length: n }, (_, i) => spawnUnit(w, kind, f, x, 10 + i));
 
   it("tallies cost × HP of armed units in view, enemies only if visible", () => {

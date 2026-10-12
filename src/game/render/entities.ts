@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { BUILDINGS, ECONOMY, TICK_RATE, UNITS } from "../../sim/balance";
 import { isInfantry, squadAlive } from "../../sim/infantry";
+import { liftedBy } from "../../sim/lift";
 import type { Building, BuildingKind, Faction, FxEvent, Unit, UnitKind, WeaponFx, World } from "../../sim/types";
 import { baySeats, RIDER_SCALE, SquadRig, type BotKind, type Footprint } from "../three/infantry";
 import { discMat, eliteUniform, setVariant, type Variant } from "../three/materials";
@@ -8,6 +9,8 @@ import { buildingDef, instance, unitDef, unitScale, type ModelDef, type ModelIns
 import { AIR_H, HOVER_H, type P3, type View } from "../three/view";
 import { Ease } from "../three/tween";
 import type { Fx } from "./fx";
+import { CARRY_CLEAR, GantryView, GoliathView, type GoliathHost } from "./goliath";
+import type { GroundGfx } from "../three/ground-gfx";
 import { FlashClock, JUICE } from "../juice";
 
 interface UnitView {
@@ -41,6 +44,8 @@ interface UnitView {
   squad: SquadRig | null;
   /** The Condor's bay, ramp and hover. */
   condor: CondorView | null;
+  /** A Goliath's rig and everything it shows (render/goliath.ts; its root is m.root). */
+  goliath: GoliathView | null;
   /** Sim position at the last sync (a squad's death blast is matched against it). */
   sx: number;
   sy: number;
@@ -60,11 +65,14 @@ interface CondorView {
   /** The bay lights spilling out of the open ramp onto the ground (a child of the root). */
   pool: THREE.Mesh;
   poolMat: THREE.MeshBasicMaterial;
+  /** Climbed above its flying height (tiles) to carry a Goliath on its cables. */
+  lift: number;
 }
 
 interface BuildingView {
   kind: "building";
   m: ModelInstance;
+  bkind: BuildingKind;
   faction: Faction;
   face: number;
   recoil: number;
@@ -87,6 +95,8 @@ interface BuildingView {
   top: number;
   /** Roof heights over the middle of the footprint (see roofOf). */
   roof: Float32Array;
+  /** A Gantry's build stages, crane and lights (render/goliath.ts). */
+  gantry: GantryView | null;
 }
 
 type View3 = UnitView | BuildingView;
@@ -210,6 +220,11 @@ function topsOf(geo: THREE.BufferGeometry, ox: number, oy: number, oz: number): 
  * ones fall where they stood; robots step aside out of vehicles' hulls. The
  * Condor comes down and drops its ramp to load or drop squads, with its
  * riders seated in the open bay; they step off the ramp and climb aboard by it.
+ *
+ * A Goliath is a posed rig with a view of its own (render/goliath.ts): it
+ * walks, anchors, fights and topples there, and its Condors climb over it to
+ * carry it. A Gantry shows its Goliath taking shape. The enemy always sees
+ * both, so they are drawn clear of the fog and never left as remembered ghosts.
  */
 export class EntityRenderer {
   private views = new Map<number, View3>();
@@ -226,7 +241,18 @@ export class EntityRenderer {
   private boarders = new Set<number>();
   /** Squads off the field still on show: robots toppling (wiped out) or hopping aboard. */
   private leaving: { rig: SquadRig; alive: number }[] = [];
+  /** Goliaths destroyed, still on show as they topple and sink away. */
+  private toppling: GoliathView[] = [];
+  /** Robot Love: the two Goliaths in love and where they meet (they walk to meet once their views are up). */
+  private lovers: { ids: readonly number[]; x: number; y: number } | null = null;
+  /** The world tick at the last sync (a replay seek back rewinds it). */
+  private lastTick = 0;
+  /** Goliaths that just walked off a Gantry since the last sync (unit → its Gantry). */
+  private rolledOut = new Map<number, number>();
+  private host: GoliathHost;
   private snipeTurn = 0;
+  /** This frame's fraction of a tick (sim timers run at world.tick - 1 + alpha). */
+  private alpha = 1;
   /** Vehicle footprints near the squad being updated (reused). */
   private avoid: Footprint[] = [];
   /** Squads on show this frame, x, y pairs: the trees thin over them (reused). */
@@ -254,6 +280,18 @@ export class EntityRenderer {
       shooters: (id, wfx) => this.shooters(id, wfx),
       fire: (id, i) => this.squadFire(id, i),
       diedAt: (x, y) => this.squadDiedAt(x, y)
+    };
+    this.host = {
+      v, world, fx, group: this.group,
+      unitPose: (id) => {
+        const o = this.views.get(id);
+        return o?.kind === "unit" ? o : null;
+      }
+    };
+    // (a Goliath's mortar shells leave its shoulder pods)
+    fx.shellFrom = (id) => {
+      const o = this.views.get(id);
+      return o?.kind === "unit" && o.goliath && o.visible ? o.goliath.shellFrom() : null;
     };
   }
 
@@ -302,9 +340,11 @@ export class EntityRenderer {
    * sight, or a Sniper Team hidden in the woods) — its model is where it was
    * last drawn, not where it is: the shot leaves the sim's position instead.
    */
-  muzzle(id: number): P3 | null {
+  muzzle(id: number, fx?: WeaponFx): P3 | null {
     const v = this.views.get(id);
     if (!v || !v.visible) return null;
+    // (a Goliath fires each weapon from its own guns: pods, eye, arm cannons, machine guns)
+    if (v.kind === "unit" && v.goliath) return v.goliath.muzzle(fx ?? "mg");
     if (v.kind === "unit" && v.squad) {
       const up = v.squad.standing();
       if (!up.length) return null;
@@ -319,11 +359,15 @@ export class EntityRenderer {
     return { x: tmp.x, y: tmp.z, h: tmp.y };
   }
 
-  /** Called when a shot fires: kick the recoil and snap aim toward it. */
-  fired(id: number, angle: number): void {
+  /** Called when a shot fires: kick the recoil and snap aim toward it (a Goliath kicks the gun that fired `fx`). */
+  fired(id: number, angle: number, fx?: WeaponFx): void {
     const v = this.views.get(id);
     if (!v) return;
     v.recoil = 1;
+    if (v.kind === "unit" && v.goliath) {
+      v.goliath.fired(fx ?? "mg");
+      return;
+    }
     if (v.kind === "unit" && v.m.turret) v.aim = angle;
     // (a squad's formation wheels round to its new facing in updateSquad: snapped, every robot would jump)
     else if (v.kind === "unit" && v.squad) return;
@@ -351,7 +395,7 @@ export class EntityRenderer {
 
   /**
    * Feed every sim fx event through here (before the views sync): squads
-   * boarding and dropping out of Condors, Titans crushing robots.
+   * boarding and dropping out of Condors, Mastodons crushing robots.
    */
   onFx(ev: FxEvent): void {
     switch (ev.type) {
@@ -366,6 +410,46 @@ export class EntityRenderer {
       case "crush":
         if (this.visibleAt(ev.x, ev.y)) this.fx.crush(ev.x, ev.y);
         break;
+      case "goliathRollout": {
+        this.rolledOut.set(ev.id, ev.buildingId);
+        const b = this.views.get(ev.buildingId);
+        if (b?.kind === "building") b.gantry?.rollout();
+        break;
+      }
+      case "goliathMode":
+      case "goliathWeapon":
+      case "goliathLift": {
+        const g = this.views.get(ev.id);
+        if (g?.kind === "unit") g.goliath?.onFx(ev);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Robot Love: Goliaths `ids` walk to meet at (x, y), eyes pink, hearts
+   * rising (render/goliath.ts) — the sim has stopped at the draw, so their
+   * views play it out on their own.
+   */
+  love(ids: readonly number[], x: number, y: number): void {
+    this.lovers = { ids, x, y };
+  }
+
+  /** A Goliath's rendered rig, if it has one on show (or toppling): its rings and lift, for the overlay. */
+  goliath(id: number): GoliathView | null {
+    const v = this.views.get(id);
+    return v?.kind === "unit" ? v.goliath : null;
+  }
+
+  /**
+   * Every Goliath's rings on the ground (render/goliath.ts GoliathView.marks):
+   * `selected` units get a bold threat ring, and `friendly` says whose they are.
+   */
+  goliathMarks(g: GroundGfx, selected: ReadonlySet<number>): void {
+    for (const u of this.world.units.values()) {
+      if (!u.goliath) continue;
+      const v = this.views.get(u.id);
+      if (v?.kind === "unit" && v.goliath && v.visible) v.goliath.marks(g, u, selected.has(u.id), this.isFriendly(u.faction));
     }
   }
 
@@ -411,7 +495,12 @@ export class EntityRenderer {
 
   sync(alpha: number, prev: Map<number, { x: number; y: number }>, dtMs: number): void {
     const w = this.world;
+    // (a replay seek back: what's gone just isn't there yet, and a love scene that hasn't happened is off)
+    const rewound = w.tick < this.lastTick;
+    this.lastTick = w.tick;
+    if (this.lovers && w.winner !== "draw") this.lovers = null;
     this.time += dtMs;
+    this.alpha = alpha;
     eliteUniform.value = 0.1 + 0.06 * Math.sin(this.time / 260);
     const seen = this.seen;
     seen.clear();
@@ -438,7 +527,7 @@ export class EntityRenderer {
       seen.add(b.id);
       let v = this.views.get(b.id) as BuildingView | undefined;
       if (!v) v = this.createBuilding(b);
-      this.updateBuilding(b, v, dtMs, turnK);
+      this.updateBuilding(b, v, dtMs, turnK, alpha);
     }
 
     for (const [id, v] of this.views) {
@@ -446,7 +535,11 @@ export class EntityRenderer {
       const root = v.m.root;
       // an enemy building destroyed out of sight stays standing, as remembered (the minimap's
       // memory too), until we see its footprint again — or the match is decided
-      if (v.kind === "building" && v.visible && !this.sold.has(id) && !this.isFriendly(v.faction) && !w.winner && !this.footprintSeen(v))
+      // (not one the enemy always sees, a Gantry: we see it die wherever it stands)
+      if (
+        v.kind === "building" && v.visible && !this.sold.has(id) && !this.isFriendly(v.faction) && !w.winner &&
+        !BUILDINGS[v.bkind].alwaysVisible && !this.footprintSeen(v)
+      )
         continue;
       if (v.kind === "building") {
         if (!this.sold.has(id) && v.visible) this.fx.rubble(v.cx, v.cy, v.size);
@@ -464,7 +557,11 @@ export class EntityRenderer {
           for (let i = 0; i < 5; i++) this.fx.dust(v.cx + (Math.random() - 0.5) * v.size, v.cy + (Math.random() - 0.5) * v.size);
         } else this.group.remove(root);
       } else if (v.squad && v.visible) this.leave(id, v);
-      else {
+      else if (v.goliath && !rewound) {
+        // a Goliath topples, slams down and sinks away before it goes
+        v.goliath.startFall();
+        this.toppling.push(v.goliath);
+      } else {
         this.group.remove(root);
         this.release(v);
       }
@@ -491,8 +588,16 @@ export class EntityRenderer {
         this.leaving.splice(i, 1);
       }
     }
+    for (let i = this.toppling.length - 1; i >= 0; i--) {
+      const g = this.toppling[i]!;
+      if (!g.updateFall(dtMs)) continue;
+      this.group.remove(g.root);
+      g.dispose();
+      this.toppling.splice(i, 1);
+    }
     this.boarded.clear();
     this.dropped.clear();
+    this.rolledOut.clear();
   }
 
   /** A squad left the field: aboard a Condor (its robots hop up into the bay), or wiped out (the last fall). */
@@ -522,6 +627,7 @@ export class EntityRenderer {
   private release(v: View3): void {
     if (v.kind !== "unit") return;
     v.squad?.dispose();
+    v.goliath?.dispose();
     if (v.condor) {
       v.condor.poolMat.dispose();
       for (const r of v.condor.riders.values()) r.rig.dispose();
@@ -544,6 +650,7 @@ export class EntityRenderer {
 
   private createUnit(u: Unit): UnitView {
     if (isInfantry(u.kind)) return this.createSquad(u);
+    if (u.goliath) return this.createGoliath(u);
     const stats = UNITS[u.kind];
     const m = instance(unitDef(u.kind, u.faction));
     m.body.rotation.order = "YXZ";
@@ -556,7 +663,7 @@ export class EntityRenderer {
       gx: u.x, gy: u.y, bh: 0, pitch: 0, roll: 0, bank: 0, visible: true, variant: "normal",
       // units that arrive ranked (Last Stand waves) don't pop their chevrons
       rank: u.rank, chevronPop: 1, top: m.def.height * scale, scale,
-      squad: null, condor: null, sx: u.x, sy: u.y
+      squad: null, condor: null, goliath: null, sx: u.x, sy: u.y
     };
     if (m.ramp) {
       const bay = new THREE.Group();
@@ -567,7 +674,7 @@ export class EntityRenderer {
       pool.renderOrder = 3;
       pool.visible = false;
       m.root.add(pool);
-      v.condor = { bay, riders: new Map(), ramp: 0, low: 0, washT: 0, hold: 0, pool, poolMat };
+      v.condor = { bay, riders: new Map(), ramp: 0, low: 0, washT: 0, hold: 0, pool, poolMat, lift: 0 };
     }
     // units roll out of the factory with a quick pop-in
     if (this.world.tick > 1) {
@@ -588,13 +695,13 @@ export class EntityRenderer {
       else this.fx.landing(at);
     };
     const def = unitDef(u.kind, u.faction);
-    const m: ModelInstance = { root: rig.root, body: rig.root, turret: null, rotors: [], cargo: null, ramp: null, def };
+    const m: ModelInstance = { root: rig.root, body: rig.root, turret: null, rotors: [], cargo: null, ramp: null, parts: {}, def };
     this.group.add(rig.root);
     const v: UnitView = {
       kind: "unit", m, air: false, hover: false,
       face: u.facing, aim: u.facing, recoil: 0, lastFired: u.firedTick, phase: 0, dustT: 0,
       gx: u.x, gy: u.y, bh: this.v.terrain.groundAt(u.x, u.y), pitch: 0, roll: 0, bank: 0, visible: true, variant: "normal",
-      rank: u.rank, chevronPop: 1, top: def.height, scale: 1, squad: rig, condor: null, sx: u.x, sy: u.y
+      rank: u.rank, chevronPop: 1, top: def.height, scale: 1, squad: rig, condor: null, goliath: null, sx: u.x, sy: u.y
     };
     rig.root.position.set(u.x, v.bh, u.y);
     rig.root.rotation.set(0, -u.facing, 0);
@@ -608,6 +715,28 @@ export class EntityRenderer {
       rig.root.updateMatrixWorld(true);
       rig.dropFrom(rig.root.worldToLocal(from), drop.bailout ? 0.5 : 0.14, lip ? RIDER_SCALE : 1);
     } else if (this.world.tick > 1) rig.popIn();
+    this.views.set(u.id, v);
+    return v;
+  }
+
+  /**
+   * A Goliath: its posed rig stands in for a model instance. One that just
+   * rolled out of a Gantry starts on the cradle and walks off it (no pop-in).
+   */
+  private createGoliath(u: Unit): UnitView {
+    const gantryId = this.rolledOut.get(u.id);
+    const gantry = gantryId !== undefined ? this.views.get(gantryId) : undefined;
+    const from = gantry?.kind === "building" && gantry.gantry ? gantry.gantry.cradle : null;
+    const gv = new GoliathView(this.host, u, from);
+    const def = unitDef(u.kind, u.faction);
+    const m: ModelInstance = { root: gv.root, body: gv.rig.j.body, turret: null, rotors: [], cargo: null, ramp: null, parts: {}, def };
+    this.group.add(gv.root);
+    const v: UnitView = {
+      kind: "unit", m, air: false, hover: false,
+      face: gv.face, aim: u.aim, recoil: 0, lastFired: u.firedTick, phase: 0, dustT: 0,
+      gx: gv.gx, gy: gv.gy, bh: gv.bh, pitch: 0, roll: 0, bank: 0, visible: true, variant: "normal",
+      rank: u.rank, chevronPop: 1, top: gv.top, scale: gv.root.scale.x, squad: null, condor: null, goliath: gv, sx: u.x, sy: u.y
+    };
     this.views.set(u.id, v);
     return v;
   }
@@ -627,6 +756,23 @@ export class EntityRenderer {
     v.sy = u.y;
     if (v.squad) {
       this.updateSquad(u, v, gx, gy, dtMs, turnK);
+      return;
+    }
+    if (v.goliath) {
+      const g = v.goliath;
+      const love = this.lovers;
+      if (!love && g.inLove) g.endLove();
+      if (love && !g.inLove && love.ids.includes(u.id)) {
+        const other = this.world.units.get(love.ids.find((id) => id !== u.id) ?? -1);
+        if (other) g.love(love.x, love.y, other.x, other.y);
+      }
+      if (visible) this.setVariant(v, this.flashes.active(u.id, performance.now()) ? "flash" : u.rank >= 3 ? "elite" : "normal");
+      g.update(u, gx, gy, dtMs, turnK, this.alpha, visible);
+      v.gx = g.gx;
+      v.gy = g.gy;
+      v.bh = g.bh;
+      v.face = g.face;
+      this.promote(u, v);
       return;
     }
     const moved = Math.hypot(gx - v.gx, gy - v.gy);
@@ -659,8 +805,12 @@ export class EntityRenderer {
       const bob = Math.sin(this.time / 380 + v.phase) * 0.06;
       const g = t.surfaceAt(gx, gy);
       v.bh = g * 0.3 + AIR_H + bob;
-      // a Condor dropping or picking up squads comes down low over the ground
-      if (v.condor) v.bh += (g + CONDOR_LOW - (g * 0.3 + AIR_H)) * v.condor.low;
+      // a Condor dropping or picking up squads comes down low over the ground; carrying a Goliath, it climbs over it
+      if (v.condor) {
+        v.bh += (g + CONDOR_LOW - (g * 0.3 + AIR_H)) * v.condor.low;
+        v.condor.lift += (this.carryHeight(u, g * 0.3 + AIR_H) - v.condor.lift) * (1 - Math.exp(-(dtMs / 1000) * 1.8));
+        v.bh += v.condor.lift;
+      }
       // bank into turns, nose down when moving fast
       const turnRate = dtMs > 0 ? angleDelta(prevFace, v.face) / (dtMs / 1000) : 0;
       v.bank += (Math.max(-0.6, Math.min(0.6, -turnRate * 0.35)) - v.bank) * sk;
@@ -689,7 +839,7 @@ export class EntityRenderer {
     if (v.m.turret) {
       const rel = v.aim - v.face;
       v.m.turret.rotation.y = -rel;
-      const kick = v.recoil * (u.kind === "titan" ? 0.08 : 0.05);
+      const kick = v.recoil * (u.kind === "mastodon" ? 0.08 : 0.05);
       const mount = v.m.def.mount;
       v.m.turret.position.set(mount[0] + Math.sin(-rel) * kick, mount[1], mount[2] + Math.cos(-rel) * kick);
     }
@@ -697,13 +847,7 @@ export class EntityRenderer {
     if (v.m.cargo) v.m.cargo.visible = u.kind === "harvester" && u.cargo >= ECONOMY.harvesterCapacity / 2;
     if (v.condor) this.updateCondor(u, v, v.condor, gx, gy, dtMs);
 
-    // veterancy: a promotion pops the new chevron in
-    if (u.rank > v.rank) {
-      v.rank = u.rank;
-      v.chevronPop = 0;
-      this.v.tweens.add({ dur: 450, ease: Ease.backOut, update: (k) => (v.chevronPop = k) });
-    }
-    v.rank = u.rank;
+    this.promote(u, v);
 
     // ground vehicles kick up dust when moving
     if (!v.air && !v.hover && moved > 0.006) {
@@ -715,6 +859,30 @@ export class EntityRenderer {
     }
     // hover tanks stir a faint spray over water
     if (v.hover && moved > 0.006 && t.heightAt(gx, gy) < -0.1 && Math.random() < 0.3) this.fx.dust(gx, gy);
+  }
+
+  /** Veterancy: a promotion pops the new chevron in. */
+  private promote(u: Unit, v: UnitView): void {
+    if (u.rank > v.rank) {
+      v.rank = u.rank;
+      v.chevronPop = 0;
+      this.v.tweens.add({ dur: 450, ease: Ease.backOut, update: (k) => (v.chevronPop = k) });
+    }
+    v.rank = u.rank;
+  }
+
+  /**
+   * How far above its flying height a Condor on a lift climbs: to clear the
+   * top of the Goliath it carries (or is closing in to hook onto), 0 for any
+   * other Condor.
+   */
+  private carryHeight(c: Unit, flying: number): number {
+    const g = c.order.type === "lift" ? liftedBy(this.world, c) : null;
+    if (!g?.goliath?.lift) return 0;
+    const gv = this.views.get(g.id);
+    if (gv?.kind !== "unit" || !gv.goliath) return 0;
+    if (g.goliath.lift.phase !== "carrying" && Math.hypot(c.x - g.x, c.y - g.y) > 2.2) return 0;
+    return Math.max(0, gv.goliath.bh + gv.goliath.top + CARRY_CLEAR - flying);
   }
 
   /** A squad: it turns and marches (cadence from its ground speed), raises its weapons while fighting. */
@@ -761,8 +929,10 @@ export class EntityRenderer {
       const ov = this.views.get(o.id);
       const ox = ov?.kind === "unit" ? ov.gx : o.x;
       const oy = ov?.kind === "unit" ? ov.gy : o.y;
-      if (Math.abs(ox - gx) > 1.6 || Math.abs(oy - gy) > 1.6) continue;
       const [hl, hw] = hullHalf(o.kind);
+      // (a Goliath's feet reach further than a tank's hull)
+      const near = Math.max(1.6, Math.max(hl, hw) + 0.4);
+      if (Math.abs(ox - gx) > near || Math.abs(oy - gy) > near) continue;
       const face = ov?.kind === "unit" ? ov.face : o.facing;
       avoid.push({ x: ox, z: oy, fx: Math.sin(face), fz: -Math.cos(face), hl, hw });
     }
@@ -862,10 +1032,12 @@ export class EntityRenderer {
     m.root.position.set(cx, base - 0.02, cy);
     this.group.add(m.root);
     const v: BuildingView = {
-      kind: "building", m, faction: b.faction, face: b.facing, recoil: 0, lastFired: b.firedTick,
+      kind: "building", m, bkind: b.kind, faction: b.faction, face: b.facing, recoil: 0, lastFired: b.firedTick,
       smokeT: 0, size, tx: b.tx, ty: b.ty, cx, cy, base, visible: true, seen: true, hp: b.hp / BUILDINGS[b.kind].hp,
-      variant: "normal", warmUntil: 0, top: m.def.height, roof: roofOf(b.kind, m.def, size)
+      variant: "normal", warmUntil: 0, top: m.def.height, roof: roofOf(b.kind, m.def, size), gantry: null
     };
+    // (the Gantry, and the Goliath taking shape on it, are always in the enemy's sight)
+    if (b.kind === "gantry") v.gantry = new GantryView(this.host, m, b, cx, cy, base);
     if (this.world.tick > 1) {
       // freshly placed: it rises from the ground in a puff of dust
       m.root.scale.set(1, 0.05, 1);
@@ -883,14 +1055,16 @@ export class EntityRenderer {
     return false;
   }
 
-  private updateBuilding(b: Building, v: BuildingView, dtMs: number, turnK: number): void {
+  private updateBuilding(b: Building, v: BuildingView, dtMs: number, turnK: number, alpha: number): void {
     const friendly = this.isFriendly(b.faction);
-    const visible = friendly || this.buildingShown(b);
+    const always = !!BUILDINGS[b.kind].alwaysVisible;
+    const visible = friendly || always || this.buildingShown(b);
     v.visible = visible;
     v.m.root.visible = visible;
     if (!visible) return;
-    // a remembered enemy building out of sight keeps the health it had when last seen
-    v.seen = friendly || this.footprintSeen(v);
+    // a remembered enemy building out of sight keeps the health it had when last seen (a Gantry is never out of sight)
+    v.seen = friendly || always || this.footprintSeen(v);
+    v.gantry?.update(b, dtMs, alpha, visible);
     if (v.seen) v.hp = b.hp / BUILDINGS[b.kind].hp;
     const ratio = v.hp;
     this.setVariant(v, v.seen && performance.now() < v.warmUntil ? "warm" : ratio < 0.5 ? "damaged" : "normal");
@@ -919,7 +1093,7 @@ export class EntityRenderer {
         puffAt.x = v.cx + (((i % 3) - 1) * v.size) / 4 + (Math.random() - 0.5) * 0.12;
         puffAt.y = v.cy + ((Math.floor(i / 3) - 1) * v.size) / 4 + (Math.random() - 0.5) * 0.12;
         puffAt.h = v.base - 0.02 + v.roof[i]!;
-        this.fx.buildingSmoke(puffAt, ratio < 0.25);
+        this.fx.buildingSmoke(puffAt, ratio < 0.25, always);
       }
     }
   }
@@ -928,8 +1102,11 @@ export class EntityRenderer {
     this.v.scene.remove(this.group);
     for (const v of this.views.values()) this.release(v);
     for (const l of this.leaving) l.rig.dispose();
+    for (const g of this.toppling) g.dispose();
     this.views.clear();
     this.leaving = [];
+    this.toppling = [];
     if (this.fx.squads) this.fx.squads = null;
+    this.fx.shellFrom = null;
   }
 }

@@ -250,7 +250,7 @@ function showMenu(): void {
       ? "Short missions with a twist. Three stars each — can you take them all?"
       : survival
         ? "Hold your base against endless, themed waves. How long can you last?"
-        : "Mine scrap. Build your swarm. Destroy the enemy HQ.";
+        : "Mine scrap. Build your swarm. Destroy the enemy HQ and its Goliaths.";
     const best = menu.querySelector<HTMLElement>("#lsbest")!;
     best.hidden = !survival;
     if (survival) {

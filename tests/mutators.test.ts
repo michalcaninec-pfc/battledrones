@@ -98,9 +98,9 @@ describe("mutator effects", () => {
       const w = createWorld(16, 16);
       applyMutators(w, muts);
       spawnUnit(w, "stinger", "blue", 4, 8);
-      const target = spawnUnit(w, "titan", "red", 6, 8);
-      for (let i = 0; i < 40 && target.hp === UNITS.titan.hp; i++) step(w, []);
-      return UNITS.titan.hp - target.hp;
+      const target = spawnUnit(w, "mastodon", "red", 6, 8);
+      for (let i = 0; i < 40 && target.hp === UNITS.mastodon.hp; i++) step(w, []);
+      return UNITS.mastodon.hp - target.hp;
     };
     const base = hit([]);
     expect(base).toBeGreaterThan(0);
@@ -145,7 +145,7 @@ describe("mutator effects", () => {
       expect(buildingBlocker(w, f, "sam-site")).toBe("Disabled: Air War");
       expect(buildingBlocker(w, f, "airpad")).toBeNull();
       expect(buildingBlocker(w, f, "turret")).toBeNull();
-      for (const k of ["stinger", "flak-crawler", "mortar", "titan", "lancer"] as const)
+      for (const k of ["stinger", "flak-crawler", "mortar", "mastodon", "lancer"] as const)
         expect(unitBlocker(w, f, k)).toBe("Disabled: Air War");
       // the starting Trooper Squad stays home: no Condor to fly it into the fight
       expect(unitBlocker(w, f, "condor")).toBe("Disabled: Air War");
@@ -211,7 +211,7 @@ describe("the AI under mutators", () => {
     const w = createMapWorld("frostbite", { seed: 11, mutators: ["airwar"] });
     const a = createAiState("airswarm", "normal", 1);
     const b = createAiState("balanced", "normal", 2);
-    const banned = new Set<string>(["fab-plant", "sam-site", "stinger", "flak-crawler", "mortar", "titan", "lancer"]);
+    const banned = new Set<string>(["fab-plant", "sam-site", "stinger", "flak-crawler", "mortar", "mastodon", "lancer"]);
     let air = 0;
     for (let i = 0; i < 25 * 60 * TICK_RATE && !w.winner; i++) {
       step(w, [...tickAi(w, "blue", a), ...tickAi(w, "red", b)]);
@@ -235,7 +235,7 @@ describe("infantry mutators", () => {
     const w = createMapWorld("riverlands", { mutators: ["infantrywar"] });
     for (const f of ["blue", "red"] as const) {
       expect(buildingBlocker(w, f, "fab-plant")).toBe("Disabled: Infantry War");
-      for (const k of ["stinger", "flak-crawler", "mortar", "titan", "lancer", "wasp", "raptor", "hornet"] as const)
+      for (const k of ["stinger", "flak-crawler", "mortar", "mastodon", "lancer", "wasp", "raptor", "hornet"] as const)
         expect(unitBlocker(w, f, k)).toBe("Disabled: Infantry War");
       for (const k of ["harvester", "scout", "mender", "condor", "trooper", "rocket-squad", "sniper"] as const)
         expect(bannedBy(w, k, f)).toBeNull();

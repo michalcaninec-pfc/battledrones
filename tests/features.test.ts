@@ -65,10 +65,10 @@ describe("terrain", () => {
     const hitsTaken = (t: Terrain) => {
       const w = createWorld(16, 16);
       setTerrain(w, 8, 8, t);
-      const victim = spawnUnit(w, "titan", "red", 8.5, 8.5);
+      const victim = spawnUnit(w, "mastodon", "red", 8.5, 8.5);
       spawnUnit(w, "stinger", "blue", 5.5, 8.5);
       runTicks(w, 5 * TICK_RATE);
-      return UNITS.titan.hp - victim.hp;
+      return UNITS.mastodon.hp - victim.hp;
     };
     expect(hitsTaken(Terrain.Forest)).toBeLessThan(hitsTaken(Terrain.Ground) * 0.8);
   });
@@ -83,12 +83,12 @@ describe("tech tree and buildings", () => {
     step(w, [{ type: "startBuilding", faction: "blue", building: "tech-lab" }]);
     expect(w.factions.blue.pending).toBeNull();
     const fab = spawnBuilding(w, "fab-plant", "blue", 8, 2);
-    step(w, [{ type: "produce", faction: "blue", buildingId: fab.id, unit: "titan" }]);
+    step(w, [{ type: "produce", faction: "blue", buildingId: fab.id, unit: "mastodon" }]);
     expect(fab.queue).toHaveLength(0);
     step(w, [{ type: "startBuilding", faction: "blue", building: "tech-lab" }]);
     expect(w.factions.blue.pending?.kind).toBe("tech-lab");
     spawnBuilding(w, "tech-lab", "blue", 12, 2);
-    step(w, [{ type: "produce", faction: "blue", buildingId: fab.id, unit: "titan" }]);
+    step(w, [{ type: "produce", faction: "blue", buildingId: fab.id, unit: "mastodon" }]);
     expect(fab.queue).toHaveLength(1);
   });
 
@@ -235,11 +235,11 @@ describe("unit behaviour", () => {
 
   it("veterans rank up after kills and hit harder", () => {
     const w = createWorld(24, 24);
-    const vet = spawnUnit(w, "titan", "blue", 5.5, 5.5);
+    const vet = spawnUnit(w, "mastodon", "blue", 5.5, 5.5);
     for (let i = 0; i < 4; i++) spawnUnit(w, "stinger", "red", 8.5, 3.5 + i * 1.2);
     runTicks(w, 30 * TICK_RATE);
     expect(vet.rank).toBeGreaterThanOrEqual(1);
-    expect(vet.xp).toBeGreaterThanOrEqual(UNITS.titan.cost);
+    expect(vet.xp).toBeGreaterThanOrEqual(UNITS.mastodon.cost);
   });
 });
 

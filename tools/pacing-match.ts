@@ -4,12 +4,13 @@ import { createAiState, tickAi, type Difficulty, type StrategyName } from "../sr
 import { BUILDINGS, OBJECTIVES, TICK_RATE, UNITS } from "../src/sim/balance";
 import { createMapWorld } from "../src/sim/maps";
 import { pickAiOpener } from "../src/sim/openers";
+import { rulesOf } from "../src/sim/rules";
 import { step } from "../src/sim/sim";
 import type { Faction, FxEvent, UnitKind } from "../src/sim/types";
 import { buildingCenter, hqOf } from "../src/sim/world";
 
 const COMBAT = new Set<UnitKind>([
-  "stinger", "flak-crawler", "mortar", "titan", "lancer", "wasp", "raptor", "hornet", "mender", "trooper", "rocket-squad", "sniper"
+  "stinger", "flak-crawler", "mortar", "mastodon", "lancer", "wasp", "raptor", "hornet", "mender", "trooper", "rocket-squad", "sniper"
 ]);
 const SIDES: Faction[] = ["blue", "red"];
 
@@ -79,11 +80,17 @@ export interface PlayOptions {
   difficulty?: Difficulty;
   /** Record wall-clock cost (Match.perf). */
   timing?: boolean;
+  /** Ban the Goliath (and so its Gantry) for both sides: a match about something else, at the old pace. */
+  noGoliath?: boolean;
 }
 
 export function playMatch(map: string, blue: StrategyName, red: StrategyName, seed: number, aiSeed: number, opts: PlayOptions = {}): Match {
   const openers = { blue: pickAiOpener(blue, seed, "blue"), red: pickAiOpener(red, seed, "red") };
   const w = createMapWorld(map, { seed, objectives: true, openers });
+  if (opts.noGoliath) {
+    const r = rulesOf(w);
+    w.rules = { ...r, bannedUnits: [...r.bannedUnits, "goliath"], bannedBuildings: [...r.bannedBuildings, "gantry"] };
+  }
   const diff = opts.difficulty ?? "normal";
   const ai = { blue: createAiState(blue, diff, aiSeed), red: createAiState(red, diff, aiSeed + 1) };
   const A = buildingCenter(hqOf(w, "blue")!);

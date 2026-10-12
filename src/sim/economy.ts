@@ -1,4 +1,5 @@
-import { BUILDINGS, ECONOMY, TERRAIN, TICK_RATE, UNITS } from "./balance";
+import { BUILDINGS, ECONOMY, GOLIATH, TERRAIN, TICK_RATE, UNITS } from "./balance";
+import { anchoredGoliaths, goliathTrainer, goliathsOf, hasGoliath, inGoliathRing, isAnchored, overlapsGoliath, trainableAt, unitCost } from "./goliath";
 import { moveUnitToward } from "./movement";
 import { blocksObjective } from "./objectives";
 import { isStunned } from "./powers";
@@ -8,6 +9,7 @@ import {
   type BuildingKind,
   type Command,
   type Faction,
+  type QueueItem,
   type Unit,
   type UnitKind,
   type World
@@ -16,11 +18,12 @@ import {
   buildingCenter,
   buildingAtTile,
   distToBuilding,
+  domainOf,
   hasBuilding,
   inBounds,
   isResource,
   moveClassOf,
-  nearestDropOff,
+  nearestDropSite,
   passable,
   removeBuilding,
   sideFrame,
@@ -29,7 +32,8 @@ import {
   terrainAt,
   tileIndex,
   invalidatePathsThrough,
-  onHomeLand
+  onHomeLand,
+  type DropSite
 } from "./world";
 import { applySpawnRank, bannedBy, incomeOf, rulesOf } from "./rules";
 import { atan2, hypot } from "./fmath";
@@ -42,17 +46,32 @@ export function buildingBlocker(w: World, faction: Faction, kind: BuildingKind):
   if (kind === "hq") return "Unique";
   const banned = bannedBy(w, kind, faction);
   if (banned) return banned;
+  // a Gantry builds nothing but Goliaths: banned with them
+  if (kind === "gantry") {
+    const noGoliaths = bannedBy(w, "goliath", faction);
+    if (noGoliaths) return noGoliaths;
+  }
+  if (stats.unique && (hasBuilding(w, faction, kind) || w.factions[faction].pending?.kind === kind)) return "One per side";
   if (stats.requires && !stats.requires.some((k) => hasBuilding(w, faction, k)))
     return `Needs ${stats.requires.map((k) => BUILDINGS[k].name).join(" or ")}`;
+  const missing = (stats.requiresAll ?? []).filter((k) => !hasBuilding(w, faction, k));
+  if (missing.length > 0) return `Needs ${andList(missing.map((k) => BUILDINGS[k].name))}`;
   return null;
 }
 
-/** Why this unit can't be queued right now (null = it can). */
+/** "A", "A and B", "A, B and C". */
+const andList = (xs: string[]): string => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+/** Why this unit can't be queued right now (null = it can). An anchored Goliath stands in for an Assembly Bay. */
 export function unitBlocker(w: World, faction: Faction, kind: UnitKind): string | null {
   const stats = UNITS[kind];
   const banned = bannedBy(w, kind, faction);
   if (banned) return banned;
-  if (!hasBuilding(w, faction, stats.builtAt)) return `Needs ${BUILDINGS[stats.builtAt].name}`;
+  if (!hasBuilding(w, faction, stats.builtAt) && !(trainableAt(w, kind) && anchoredGoliaths(w, faction).length > 0))
+    // (with a Goliath on the move and no HQ, which can never be built: say how to get the button back)
+    return trainableAt(w, kind) && hasGoliath(w, faction) && stats.builtAt === "hq"
+      ? "Anchor a Goliath"
+      : `Needs ${BUILDINGS[stats.builtAt].name}`;
   if (stats.requires && !hasBuilding(w, faction, stats.requires))
     return `Needs ${BUILDINGS[stats.requires].name}`;
   return null;
@@ -84,6 +103,8 @@ export function canPlaceBuilding(
   ty: number
 ): boolean {
   const size = BUILDINGS[kind].size;
+  // in an anchored Goliath's build ring (an outpost, anything but an HQ): even out on an island
+  const ring = kind !== "hq" && inGoliathRing(w, faction, tx, ty, size);
   for (let dy = 0; dy < size; dy++)
     for (let dx = 0; dx < size; dx++) {
       const x = tx + dx;
@@ -91,23 +112,29 @@ export function canPlaceBuilding(
       if (!inBounds(w, x, y)) return false;
       if (!TERRAIN[terrainAt(w, x, y)].buildable) return false;
       if (buildingAtTile(w, x, y)) return false;
-      if (!onHomeLand(w, faction, x, y)) return false; // never out on an island (or across the sea)
+      if (!ring && !onHomeLand(w, faction, x, y)) return false; // never out on an island (or across the sea)
     }
-  // no ground unit parked inside the footprint
+  // no ground unit parked inside the footprint, and no Goliath's body over it
   for (const u of w.units.values())
     if (
-      UNITS[u.kind].domain === "ground" &&
+      domainOf(u) === "ground" &&
       u.x >= tx && u.x < tx + size &&
       u.y >= ty && u.y < ty + size
     )
       return false;
+  if (overlapsGoliath(w, tx, ty, size)) return false;
   if (blocksObjective(w, tx, ty, size)) return false; // Uplink platforms and crates stay open ground
-  // within build radius of a friendly building
-  const cx = tx + size / 2;
-  const cy = ty + size / 2;
+  // within build radius of a friendly building (outposts don't count), or in a Goliath's ring
+  return ring || inBaseRange(w, faction, tx + size / 2, ty + size / 2);
+}
+
+/**
+ * Is a footprint centred at (cx, cy) within build radius of `faction`'s base:
+ * any of its buildings except outposts (which never count as base)?
+ */
+export function inBaseRange(w: World, faction: Faction, cx: number, cy: number): boolean {
   for (const b of w.buildings.values())
-    if (b.faction === faction && distToBuilding(b, cx, cy) <= ECONOMY.buildRadius)
-      return true;
+    if (b.faction === faction && !b.outpost && distToBuilding(b, cx, cy) <= ECONOMY.buildRadius) return true;
   return false;
 }
 
@@ -115,7 +142,11 @@ export function placeBuilding(w: World, faction: Faction, tx: number, ty: number
   const f = w.factions[faction];
   if (!f.pending || !f.pending.ready) return;
   if (!canPlaceBuilding(w, faction, f.pending.kind, tx, ty)) return;
+  const size = BUILDINGS[f.pending.kind].size;
+  // out of base range, so in a Goliath's build ring: an outpost (decided now, for good)
+  const outpost = !inBaseRange(w, faction, tx + size / 2, ty + size / 2);
   const b = spawnBuilding(w, f.pending.kind, faction, tx, ty);
+  if (outpost) b.outpost = true;
   f.pending = null;
   w.fx.push({ type: "built", faction, id: b.id });
   // paths that ran across the new footprint must re-plan
@@ -128,40 +159,121 @@ export function sellBuilding(w: World, faction: Faction, buildingId: number): vo
   const stats = BUILDINGS[b.kind];
   // refund scales with remaining health, plus anything still in its queue
   const refund = stats.cost * ECONOMY.sellRefund * (b.hp / stats.hp);
-  const queued = b.queue.reduce((s, q) => s + UNITS[q.kind].cost, 0);
+  const queued = b.queue.reduce((s, q) => s + paidFor(q), 0);
   w.factions[faction].scrap += Math.floor(refund + queued);
   w.fx.push({ type: "sold", id: b.id });
   removeBuilding(w, b);
 }
 
-export function produceUnit(w: World, faction: Faction, buildingId: number, kind: UnitKind): void {
-  const b = w.buildings.get(buildingId);
-  const f = w.factions[faction];
-  const stats = UNITS[kind];
-  if (!b || b.faction !== faction || stats.builtAt !== b.kind) return;
-  if (unitBlocker(w, faction, kind)) return;
-  if (b.queue.length >= ECONOMY.maxQueue) return;
-  if (f.scrap < stats.cost) return;
-  f.scrap -= stats.cost;
-  b.queue.push({ kind, remaining: stats.buildTime * TICK_RATE });
+/** What a queued unit cost (and a cancel refunds): its price when queued. */
+export const paidFor = (q: QueueItem): number => q.paid ?? UNITS[q.kind].cost;
+
+/** Most units a producer queues at once (a Gantry: one Goliath on the cradle). */
+const queueCap = (kind: UnitKind): number => (kind === "goliath" ? GOLIATH.queueMax : ECONOMY.maxQueue);
+
+/**
+ * Why an anchored Goliath can't train `kind` now (null = it can): robot
+ * infantry (and under Nomads, Harvesters) only, while anchored, under the
+ * usual tech and bans — but no Assembly Bay needed (the Goliath is the barracks).
+ */
+export function trainBlocker(w: World, g: Unit, kind: UnitKind): string | null {
+  if (!g.goliath || !trainableAt(w, kind)) return "Can't train that";
+  const banned = bannedBy(w, kind, g.faction);
+  if (banned) return banned;
+  const req = UNITS[kind].requires;
+  if (req && !hasBuilding(w, g.faction, req)) return `Needs ${BUILDINGS[req].name}`;
+  if (!isAnchored(g)) return "Anchor to train";
+  return null;
 }
 
-/** Cancel the most recently queued unit of this kind (refunded in full). */
-export function cancelProduce(w: World, faction: Faction, buildingId: number, kind: UnitKind): void {
+export function produceUnit(w: World, faction: Faction, buildingId: number, kind: UnitKind): void {
+  const f = w.factions[faction];
+  const stats = UNITS[kind];
+  if (!stats) return;
   const b = w.buildings.get(buildingId);
-  if (!b || b.faction !== faction) return;
-  for (let i = b.queue.length - 1; i >= 0; i--)
-    if (b.queue[i]!.kind === kind) {
-      b.queue.splice(i, 1);
-      w.factions[faction].scrap += UNITS[kind].cost;
+  if (!b) {
+    // an anchored Goliath trains infantry
+    const g = goliathTrainer(w, buildingId, faction);
+    if (!g || trainBlocker(w, g, kind)) return;
+    const q = g.goliath!.queue;
+    if (q.length >= ECONOMY.maxQueue || f.scrap < stats.cost) return;
+    f.scrap -= stats.cost;
+    q.push({ kind, remaining: stats.buildTime * TICK_RATE });
+    return;
+  }
+  if (b.faction !== faction || stats.builtAt !== b.kind) return;
+  if (unitBlocker(w, faction, kind)) return;
+  if (b.queue.length >= queueCap(kind)) return;
+  const cost = unitCost(w, faction, kind);
+  if (f.scrap < cost) return;
+  f.scrap -= cost;
+  b.queue.push({ kind, remaining: stats.buildTime * TICK_RATE, ...(cost !== stats.cost ? { paid: cost } : {}) });
+}
+
+/** Somewhere `kind` can be queued: a building, or an anchored Goliath (infantry). */
+export interface Producer {
+  id: number;
+  queue: QueueItem[];
+  /** The Goliath, when it is one (else null: a building). */
+  goliath: Unit | null;
+}
+
+/**
+ * Every producer of `kind` for `faction`, buildings first (in id order), then
+ * anchored Goliaths for robot infantry. The HUD's queue counts, the shortest-
+ * queue pick and "cancel one" all go through this.
+ */
+export function producersOf(w: World, faction: Faction, kind: UnitKind): Producer[] {
+  const out: Producer[] = [];
+  for (const b of w.buildings.values())
+    if (b.faction === faction && b.kind === UNITS[kind].builtAt) out.push({ id: b.id, queue: b.queue, goliath: null });
+  if (trainableAt(w, kind)) for (const g of anchoredGoliaths(w, faction)) out.push({ id: g.id, queue: g.goliath!.queue, goliath: g });
+  return out;
+}
+
+/**
+ * Every queue holding `kind` for `faction`: producersOf's, plus a Goliath's
+ * that packed up with squads still queued (paused till it digs in again, and
+ * paid for, so the HUD still counts them and can cancel one).
+ */
+export function queuesOf(w: World, faction: Faction, kind: UnitKind): Producer[] {
+  const out = producersOf(w, faction, kind);
+  if (trainableAt(w, kind))
+    for (const g of goliathsOf(w, faction))
+      if (!isAnchored(g) && g.goliath!.queue.some((q) => q.kind === kind)) out.push({ id: g.id, queue: g.goliath!.queue, goliath: g });
+  return out;
+}
+
+/** Most units producer `p` queues of `kind` (a Gantry: GOLIATH.queueMax). */
+export const producerCap = (kind: UnitKind): number => queueCap(kind);
+
+/** A producer's queue: a building's, or an (own) Goliath's training queue. */
+function queueOf(w: World, faction: Faction, id: number): QueueItem[] | null {
+  const b = w.buildings.get(id);
+  if (b) return b.faction === faction ? b.queue : null;
+  return goliathTrainer(w, id, faction)?.goliath!.queue ?? null;
+}
+
+/** Cancel the most recently queued unit of this kind (refunded what it cost). */
+export function cancelProduce(w: World, faction: Faction, buildingId: number, kind: UnitKind): void {
+  const queue = queueOf(w, faction, buildingId);
+  if (!queue) return;
+  for (let i = queue.length - 1; i >= 0; i--)
+    if (queue[i]!.kind === kind) {
+      const [q] = queue.splice(i, 1);
+      w.factions[faction].scrap += paidFor(q!);
       return;
     }
 }
 
 export function setRally(w: World, faction: Faction, buildingId: number, x: number, y: number): void {
   const b = w.buildings.get(buildingId);
-  if (!b || b.faction !== faction) return;
-  b.rally = { x, y };
+  if (b) {
+    if (b.faction === faction) b.rally = { x, y };
+    return;
+  }
+  const g = goliathTrainer(w, buildingId, faction);
+  if (g) g.goliath!.rally = { x, y };
 }
 
 // ---------------------------------------------------------------- ticks ----
@@ -180,21 +292,68 @@ export function tickProduction(w: World): void {
     if (isStunned(w, b.id)) continue; // EMP'd: production paused
     // a unit whose tech building was lost pauses (stays queued)
     if (UNITS[head.kind].requires && !hasBuilding(w, b.faction, UNITS[head.kind].requires!)) continue;
-    if ((head.remaining -= rulesOf(w).buildSpeed) > 0) continue;
+    const total = UNITS[head.kind].buildTime * TICK_RATE;
+    const before = head.remaining;
+    head.remaining -= rulesOf(w).buildSpeed;
+    if (head.kind === "goliath") goliathBuildNews(w, b, total, before, head.remaining);
+    if (head.remaining > 0) continue;
     b.queue.shift();
-    const spot = findSpawnSpot(w, b, head.kind);
+    const size = BUILDINGS[b.kind].size;
+    // (an outpost rolls out round itself, even out on an island)
+    const spot = findSpawnSpot(w, { tx: b.tx, ty: b.ty, size, faction: b.faction }, head.kind, !b.outpost);
     const u = spawnUnit(w, head.kind, b.faction, spot.x, spot.y);
     applySpawnRank(w, u);
     const c = buildingCenter(b);
     u.facing = u.aim = atan2(spot.x - c.x, -(spot.y - c.y));
     w.factions[b.faction].stats.unitsBuilt++;
     w.fx.push({ type: "built", faction: b.faction, id: u.id });
-    applyRally(w, u, b);
+    if (u.goliath) w.fx.push({ type: "goliathRollout", faction: b.faction, id: u.id, buildingId: b.id, x: u.x, y: u.y });
+    applyRally(w, u, b.rally);
+  }
+  // anchored Goliaths train infantry (paused while it walks, packs up or is EMP'd)
+  for (const g of w.units.values()) {
+    const head = g.goliath?.queue[0];
+    if (!head || !isAnchored(g) || isStunned(w, g.id)) continue;
+    if (UNITS[head.kind].requires && !hasBuilding(w, g.faction, UNITS[head.kind].requires!)) continue;
+    if ((head.remaining -= rulesOf(w).buildSpeed) > 0) continue;
+    g.goliath!.queue.shift();
+    const size = GOLIATH.footprint;
+    // around its feet, even out on an island (no special island rules for a Goliath)
+    const spot = findSpawnSpot(w, { tx: g.x - size / 2, ty: g.y - size / 2, size, faction: g.faction }, head.kind, false);
+    const u = spawnUnit(w, head.kind, g.faction, spot.x, spot.y);
+    applySpawnRank(w, u);
+    u.facing = u.aim = atan2(spot.x - g.x, -(spot.y - g.y));
+    w.factions[g.faction].stats.unitsBuilt++;
+    w.fx.push({ type: "built", faction: g.faction, id: u.id });
+    applyRally(w, u, g.goliath!.rally);
   }
 }
 
-function findSpawnSpot(w: World, b: Building, kind: UnitKind): { x: number; y: number } {
-  const size = BUILDINGS[b.kind].size;
+/** A Gantry's Goliath build ticked from `before` to `after` (of `total`) remaining: public news when it starts and nears the end. */
+function goliathBuildNews(w: World, b: Building, total: number, before: number, after: number): void {
+  const c = buildingCenter(b);
+  const ev = (stage: "started" | "nearlyDone") =>
+    w.fx.push({ type: "goliathBuild", faction: b.faction, buildingId: b.id, stage, x: c.x, y: c.y });
+  if (before >= total) ev("started");
+  const line = total * (1 - GOLIATH.nearlyDone);
+  if (before > line && after <= line && after > 0) ev("nearlyDone");
+}
+
+/** A producer's footprint (a building's, or the ground an anchored Goliath stands on). */
+interface Footprint {
+  tx: number;
+  ty: number;
+  size: number;
+  faction: Faction;
+}
+
+/**
+ * Where a unit made at footprint `b` rolls out: the nearest free tile around
+ * it, the back of the base first. `homeOnly`: on an island map, only land
+ * joined to the side's HQ (a building's spawn); a Goliath trains anywhere.
+ */
+function findSpawnSpot(w: World, b: Footprint, kind: UnitKind, homeOnly = true): { x: number; y: number } {
+  const size = b.size;
   const mc = moveClassOf(kind);
   // Prefer the back of the base (blue: the south side, where the bay doors
   // face on the art), then ring out. Searched in the side's own frame — red
@@ -202,17 +361,18 @@ function findSpawnSpot(w: World, b: Building, kind: UnitKind): { x: number; y: n
   // runs backwards — or red's units would roll out toward the enemy and
   // blue's away from it (part of the old Ashlands red-side bias).
   const flip = b.faction === "red";
-  for (let r = 1; r <= 4; r++) {
+  // (a Goliath is too big to step out right at the cradle's edge)
+  for (let r = UNITS[kind].radius > 0.6 ? 2 : 1; r <= 4; r++) {
     const ring: { x: number; y: number; pref: number }[] = [];
     for (let i = -r; i <= size + r - 1; i++)
       for (let j = -r; j <= size + r - 1; j++) {
         const dy = flip ? size - 1 - i : i;
         const dx = flip ? size - 1 - j : j;
         if (Math.max(dx < 0 ? -dx : dx - size + 1, dy < 0 ? -dy : dy - size + 1) !== r) continue;
-        const tx = b.tx + dx;
-        const ty = b.ty + dy;
+        const tx = Math.floor(b.tx) + dx;
+        const ty = Math.floor(b.ty) + dy;
         if (!inBounds(w, tx, ty)) continue;
-        if (mc !== "air" && (!passable(w, tx, ty, mc) || !onHomeLand(w, b.faction, tx, ty))) continue;
+        if (mc !== "air" && (!passable(w, tx, ty, mc) || (homeOnly && !onHomeLand(w, b.faction, tx, ty)))) continue;
         const back = flip ? dy - (size - 1) : -dy; // own-frame "south" first
         ring.push({ x: tx + 0.5, y: ty + 0.5, pref: back + Math.abs(dx - (size - 1) / 2) * 0.5 });
       }
@@ -223,8 +383,8 @@ function findSpawnSpot(w: World, b: Building, kind: UnitKind): { x: number; y: n
   return { x: b.tx + size / 2, y: Math.min(w.height - 0.5, Math.max(0.5, flip ? b.ty + size + 1 : b.ty - 1)) };
 }
 
-function applyRally(w: World, u: Unit, b: Building): void {
-  if (!b.rally) {
+function applyRally(w: World, u: Unit, rally: { x: number; y: number } | null): void {
+  if (!rally) {
     // fresh harvesters go straight to work on the nearest field
     if (u.kind === "harvester") {
       const f = nearestReachableResource(w, u.x, u.y, u.faction);
@@ -232,7 +392,7 @@ function applyRally(w: World, u: Unit, b: Building): void {
     }
     return;
   }
-  const { x, y } = b.rally;
+  const { x, y } = rally;
   if (u.kind === "harvester" && isResource(w, tileIndex(w, Math.floor(x), Math.floor(y)))) {
     u.order = { type: "harvest", fieldX: Math.floor(x), fieldY: Math.floor(y), phase: "toField" };
   } else {
@@ -322,17 +482,24 @@ export function tickTrickle(w: World): void {
     }
 }
 
+/** Distance from a point to a drop site's footprint (0 inside). */
+function distToSite(s: DropSite, x: number, y: number): number {
+  const dx = Math.max(s.tx - x, 0, x - (s.tx + s.size));
+  const dy = Math.max(s.ty - y, 0, y - (s.ty + s.size));
+  return hypot(dx, dy);
+}
+
 /** Ticks a harvester keeps running for home after being shot. */
 const FLEE_TICKS = 4 * TICK_RATE;
 
-/** Where a harvester parks to unload at a drop-off: just outside the footprint, nearest side. */
-function dockPoint(b: Building, x: number, y: number): { x: number; y: number } {
-  const size = BUILDINGS[b.kind].size;
+/** Where a harvester parks to unload at a drop site: just outside the footprint, nearest side. */
+function dockPoint(b: DropSite, x: number, y: number): { x: number; y: number } {
+  const size = b.size;
   const cx = Math.max(b.tx + 0.5, Math.min(b.tx + size - 0.5, x));
   const cy = Math.max(b.ty + 0.5, Math.min(b.ty + size - 0.5, y));
   // push the clamped point out of the footprint toward the harvester (ties
   // break toward the side's own east/south, so red docks as blue's mirror)
-  const c = buildingCenter(b);
+  const c = { x: b.tx + size / 2, y: b.ty + size / 2 };
   const red = b.faction === "red";
   const dx = cx - c.x;
   const dy = cy - c.y;
@@ -355,7 +522,7 @@ export function tickHarvest(w: World): void {
       w.tick - u.damagedTick < FLEE_TICKS &&
       (o.phase === "toField" || o.phase === "harvesting")
     ) {
-      const home = nearestDropOff(w, u.faction, u.x, u.y);
+      const home = nearestDropSite(w, u.faction, u.x, u.y, "ground");
       if (home) {
         const d = dockPoint(home, u.x, u.y);
         moveUnitToward(w, u, d.x, d.y);
@@ -416,15 +583,17 @@ export function tickHarvest(w: World): void {
         o.phase = "toBase";
       }
     } else if (o.phase === "toBase") {
-      const home = nearestDropOff(w, u.faction, u.x, u.y);
+      // (an anchored Goliath counts; once it starts packing up it doesn't, and this reroutes)
+      const home = nearestDropSite(w, u.faction, u.x, u.y, "ground");
       if (!home) {
-        u.order = { type: "idle" };
+        // a base on the move (a Goliath packing up, walking or on a lift) will dig in again: wait for it, loaded
+        if (!hasGoliath(w, u.faction)) u.order = { type: "idle" };
         continue;
       }
       const d = dockPoint(home, u.x, u.y);
-      if (moveUnitToward(w, u, d.x, d.y) || distToBuilding(home, u.x, u.y) < 1.2) {
+      if (moveUnitToward(w, u, d.x, d.y) || distToSite(home, u.x, u.y) < 1.2) {
         o.phase = "unloading";
-        const c = buildingCenter(home);
+        const c = { x: home.tx + home.size / 2, y: home.ty + home.size / 2 };
         const amount = u.cargo * incomeOf(w, u.faction);
         w.fx.push({ type: "deposit", faction: u.faction, id: u.id, x: c.x, y: c.y, amount });
       }

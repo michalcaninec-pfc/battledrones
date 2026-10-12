@@ -207,7 +207,7 @@ UNITS
   mender ×2: #57 29,27 100% attackMove 33,22; #84 31,24 59% attackMove 33,22
   trooper ×7: #71 33,24 100% attack #23; #77 33,24 100% attack #23; …
   mortar ×2: #83 38,19 100% attack #23; #110 31,24 100% attack #23
-  titan ×1: #97 34,23 96% attack #23
+  mastodon ×1: #97 34,23 96% attack #23
   condor ×1: #103 10,46 100% idle
   …
 ENEMY SEEN

@@ -1,12 +1,14 @@
-import { BUILDINGS, COMBAT, DAMAGE_VS, INFANTRY, OBJECTIVES, TERRAIN, TICK_RATE, UNITS, shotDamage, type ArmedStats } from "./balance";
+import { BUILDINGS, COMBAT, DAMAGE_VS, GOLIATH, INFANTRY, OBJECTIVES, TERRAIN, TICK_RATE, UNITS, shotDamage, type ArmedStats } from "./balance";
+import { GOLIATH_WEAPONS, canWalk, goliathReachAt, hasGoliath, repairUrgency, unplant, weaponReady } from "./goliath";
+import { dropLifts } from "./lift";
 import { concealedFrom, isInfantry, squadFirepower } from "./infantry";
 import { IGNORE_TICKS, moveUnitToward } from "./movement";
 import { isStunned } from "./powers";
-import { leaveWreck } from "./salvage";
+import { leaveWreck, scatterGantry } from "./salvage";
 import { bailOut, canBailOut } from "./transport";
 import { Terrain, type ArmorClass, type Building, type Domain, type Faction, type TargetDomain, type Unit, type World } from "./types";
 import { rulesOf } from "./rules";
-import { buildingCenter, canGetWithin, distToBuilding, moveClassOf, removeBuilding, terrainAt } from "./world";
+import { buildingCenter, canGetWithin, distToBuilding, domainOf, hqOf, moveClassOf, removeBuilding, terrainAt } from "./world";
 import { atan2, hypot } from "./fmath";
 
 type Attacker = { unit: Unit } | { building: Building };
@@ -14,8 +16,9 @@ type Attacker = { unit: Unit } | { building: Building };
 export const canHit = (targets: TargetDomain, domain: Domain): boolean =>
   targets === "both" || targets === domain;
 
+/** (A Goliath on a lift is an air target: world.ts domainOf.) */
 function unitDomain(u: Unit): Domain {
-  return UNITS[u.kind].domain;
+  return domainOf(u);
 }
 
 interface TargetRef {
@@ -81,10 +84,9 @@ export function findTarget(
  * hovering out over the sea, so it must not lock onto one (it would sit at
  * the shore with a dead order, deaf to enemies landing next to it).
  */
-export function engageable(w: World, u: Unit, id: number): boolean {
+export function engageable(w: World, u: Unit, id: number, range = UNITS[u.kind].range): boolean {
   const t = targetPosition(w, id);
   if (!t) return false;
-  const range = UNITS[u.kind].range;
   const b = w.buildings.get(id);
   if (b) return canGetWithin(w, moveClassOf(u.kind), u.x, u.y, t.x, t.y, range, (px, py) => distToBuilding(b, px, py), BUILDINGS[b.kind].size);
   return canGetWithin(w, moveClassOf(u.kind), u.x, u.y, t.x, t.y, range);
@@ -234,19 +236,32 @@ export function strikeDamage(w: World, hits: { id: number; damage: number }[], a
   retaliate(w, incidents);
 }
 
-function fire(w: World, attacker: Attacker, targetId: number, incidents: Incident[]): void {
+/**
+ * One weapon system of a multi-weapon unit (a Goliath's, goliath.ts): its
+ * stats and its own clock. The shooter's torso is aimed by the caller.
+ */
+interface WeaponMount {
+  stats: ArmedStats;
+  state: { cooldown: number; firedTick: number };
+}
+
+function fire(w: World, attacker: Attacker, targetId: number, incidents: Incident[], mount?: WeaponMount): void {
   const isUnit = "unit" in attacker;
   const holder = isUnit ? attacker.unit : attacker.building;
-  if (holder.cooldown > 0) return;
-  const stats: ArmedStats = isUnit ? UNITS[attacker.unit.kind] : BUILDINGS[attacker.building.kind];
+  const clock = mount?.state ?? holder;
+  if (clock.cooldown > 0) return;
+  const stats: ArmedStats = mount?.stats ?? (isUnit ? UNITS[attacker.unit.kind] : BUILDINGS[attacker.building.kind]);
   const src = isUnit ? { x: attacker.unit.x, y: attacker.unit.y } : buildingCenter(attacker.building);
   const t = targetPosition(w, targetId);
   if (!t) return;
   const interval = stats.shotInterval ?? COMBAT.shotInterval;
-  holder.cooldown = Math.max(1, Math.round(interval * TICK_RATE));
+  clock.cooldown = Math.max(1, Math.round(interval * TICK_RATE));
   const angle = atan2(t.x - src.x, -(t.y - src.y));
   holder.firedTick = w.tick;
-  if (isUnit) {
+  clock.firedTick = w.tick;
+  if (mount) {
+    // (the caller turns a Goliath's torso)
+  } else if (isUnit) {
     const u = attacker.unit;
     u.aim = angle;
     if (!UNITS[u.kind].turret) u.facing = angle;
@@ -308,9 +323,11 @@ function tickHealer(w: World, u: Unit, engaged: Set<number>): void {
   let bestScore = Infinity;
   for (const o of w.units.values()) {
     if (o.faction !== u.faction || o.id === u.id || o.hp >= UNITS[o.kind].hp) continue;
+    if (o.goliath && isStunned(w, o.id)) continue; // an EMP blocks repair on a Goliath while it lasts
     const d = hypot(o.x - u.x, o.y - u.y);
     if (d > reach) continue;
-    const s = d + (o.hp / UNITS[o.kind].hp) * 3;
+    // (a Goliath with a weapon down, or about to come back, comes first)
+    const s = d + (o.hp / UNITS[o.kind].hp) * 3 - (o.goliath ? repairUrgency(o) : 0);
     if (s < bestScore) {
       bestScore = s;
       best = { id: o.id, x: o.x, y: o.y, d, unit: true };
@@ -363,13 +380,19 @@ export function tickCombat(w: World): Set<number> {
 
   for (const u of w.units.values()) {
     if (u.cooldown > 0) u.cooldown--;
+    if (u.goliath) for (const k of GOLIATH_WEAPONS) if (u.goliath.weapons[k].cooldown > 0) u.goliath.weapons[k].cooldown--;
     if (isStunned(w, u.id)) {
       engaged.add(u.id); // EMP'd (powers.ts): no firing, healing or moving
       continue;
     }
     const stats = UNITS[u.kind];
-    if (u.rank >= 3 && u.hp < stats.hp && w.tick % TICK_RATE === 0)
+    // (veterans patch themselves up; a Goliath only takes a Mender's repair)
+    if (u.rank >= 3 && !u.goliath && u.hp < stats.hp && w.tick % TICK_RATE === 0)
       u.hp = Math.min(stats.hp, u.hp + stats.hp * COMBAT.eliteRegen);
+    if (u.goliath) {
+      if (goliathWeapons(w, u, healers, incidents)) engaged.add(u.id);
+      continue;
+    }
     if (stats.heal) {
       tickHealer(w, u, engaged);
       continue;
@@ -439,6 +462,69 @@ export function tickCombat(w: World): Set<number> {
   return engaged;
 }
 
+/**
+ * A Goliath's weapon systems, each on its own clock (goliath.ts): every one
+ * that is up shoots the Goliath's ordered target when it can reach it, else
+ * keeps on what it was shooting while that stays in its reach (switching to
+ * an enemy Mender that comes into it: kill the healer first), else takes the
+ * best target in its own reach. It fires on the move. The torso turns to the
+ * heaviest weapon's target. Returns true when it should hold its ground: an
+ * attack order's target is under fire, or (attack-move) anything is.
+ */
+function goliathWeapons(w: World, u: Unit, healers: Unit[], incidents: Incident[]): boolean {
+  const g = u.goliath!;
+  let ordered: number | null = null;
+  if (u.order.type === "attack") {
+    const id = u.order.targetId;
+    const t = targetPosition(w, id);
+    // (the reach of the weapons it still has that can hit it: a Goliath's shrinks as they go)
+    const reach = t ? goliathReachAt(u, t.domain) : 0;
+    if (!t || hidden(w, u.faction, id) || reach === 0) {
+      u.order = { type: "idle" }; // gone, out of reach, or vanished into the woods
+    } else if (distTo(w, id, u.x, u.y) > reach && !engageable(w, u, id, reach)) {
+      u.order = { type: "idle" }; // across the water from us
+    } else ordered = id;
+  }
+  let holds = false;
+  let aimAt: { x: number; y: number } | null = null;
+  for (const k of GOLIATH_WEAPONS) {
+    const ws = g.weapons[k];
+    if (!weaponReady(u, k)) {
+      ws.targetId = null;
+      continue;
+    }
+    const st = GOLIATH.weapons[k];
+    const minR = st.minRange ?? 0;
+    const inReach = (id: number | null): id is number => {
+      if (id === null) return false;
+      const t = targetPosition(w, id);
+      if (!t || !canHit(st.targets, t.domain) || hidden(w, u.faction, id)) return false;
+      const d = distTo(w, id, u.x, u.y);
+      return d <= st.range && d >= minR;
+    };
+    let tid: number | null = null;
+    if (inReach(ordered)) tid = ordered;
+    else {
+      const keep = inReach(ws.targetId) ? ws.targetId : null;
+      const cur = keep !== null ? w.units.get(keep) : undefined;
+      if (keep !== null && (healers.length === 0 || (cur && UNITS[cur.kind].heal))) tid = keep;
+      else {
+        const found = findTarget(w, u.faction, st.targets, u.x, u.y, st.range, minR);
+        const fu = found ? w.units.get(found.id) : undefined;
+        // a Mender that came into reach takes over; otherwise keep what we had
+        tid = keep !== null && !(fu && UNITS[fu.kind].heal) ? keep : found?.id ?? null;
+      }
+    }
+    ws.targetId = tid;
+    if (tid === null) continue;
+    if (tid === ordered || u.order.type === "attackMove") holds = true;
+    fire(w, { unit: u }, tid, incidents, { stats: st, state: ws });
+    aimAt = targetPosition(w, tid);
+  }
+  if (aimAt) u.aim = atan2(aimAt.x - u.x, -(aimAt.y - u.y));
+  return holds;
+}
+
 /** The nearest enemy Mender `u` can hit right now (within weapon range), if any. */
 function healerInRange(u: Unit, healers: Unit[], range: number, minRange: number): number | null {
   const targets = UNITS[u.kind].targets;
@@ -476,6 +562,7 @@ function retaliate(w: World, incidents: Incident[]): void {
     const faction = victim?.faction ?? vb?.faction;
     for (const u of w.units.values()) {
       if (u.faction !== faction || u.order.type !== "idle") continue;
+      if (u.goliath && !canWalk(u)) continue; // dug in (or on a lift): its guns answer on their own
       const stats = UNITS[u.kind];
       if (stats.targets === "none" || !canHit(stats.targets, attacker.domain)) continue;
       const self = u.id === victimId;
@@ -539,8 +626,13 @@ function killerOf(w: World, id: number | null): { killerId: number | null; kille
  * could stand on they bail out, hurt; otherwise they go down with it, each
  * a unit lost and killed with its own `death` event (the Condor's killer
  * gets the credit).
+ *
+ * A Goliath on a lift whose Condor fell drops first (lift.ts), so one the
+ * fall destroys dies in this same pass. A side is beaten when its HQ falls
+ * with no Goliath left, or its last Goliath falls with no HQ left.
  */
 export function cleanupDeaths(w: World): void {
+  dropLifts(w);
   const deadUnits: { u: Unit; killer: ReturnType<typeof killerOf> }[] = [];
   const deadBuildings: { b: Building; killer: ReturnType<typeof killerOf> }[] = [];
   /** Passengers lost with their Condor (over water or rock), and Condors whose squads bail out. */
@@ -567,6 +659,7 @@ export function cleanupDeaths(w: World): void {
   for (const { u, killer } of deadUnits) {
     const id = u.id;
     w.units.delete(id);
+    unplant(w, u); // (a dug-in Goliath's ground opens up)
     w.factions[u.faction].stats.unitsLost++;
     const air = unitDomain(u) === "air";
     w.fx.push({ type: "explosion", x: u.x, y: u.y, size: UNITS[u.kind].radius * 2, air, kind: "unit" });
@@ -588,6 +681,7 @@ export function cleanupDeaths(w: World): void {
   }
   for (const { carrier } of lost) carrier.passengers = [];
   for (const { b, killer } of deadBuildings) {
+    if (b.kind === "gantry") scatterGantry(w, b); // a half-built Goliath strews scrap
     removeBuilding(w, b);
     w.factions[b.faction].stats.buildingsLost++;
     const value = BUILDINGS[b.kind].cost || 500;
@@ -597,7 +691,11 @@ export function cleanupDeaths(w: World): void {
       type: "death", id: b.id, faction: b.faction, unitKind: null, buildingKind: b.kind,
       x: c.x, y: c.y, air: false, value, ...killer, rank: 0, kills: 0
     });
-    if (b.kind === "hq" && w.winner === null)
+    if (b.kind === "hq" && w.winner === null && !hasGoliath(w, b.faction))
       w.winner = b.faction === "blue" ? "red" : "blue";
   }
+  // the last Goliath of a side whose HQ is already gone (not Last Stand's waves: they never had one)
+  for (const { u } of deadUnits)
+    if (u.goliath && w.winner === null && !hqOf(w, u.faction) && !hasGoliath(w, u.faction) && (!w.survival || u.faction === w.survival.defender))
+      w.winner = u.faction === "blue" ? "red" : "blue";
 }

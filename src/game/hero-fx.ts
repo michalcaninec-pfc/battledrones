@@ -78,8 +78,8 @@ export class HeroPresenter {
         // both sides' real heroes, not every rank-2 grunt
         if (ev.rank >= 3 || ev.kills >= 6) this.lost.push({ ...rec, line: `${ev.faction === "blue" ? "Blue" : "Red"}'s ${rec.line}` });
       } else if (ev.faction === this.opts.player) this.lost.push(rec);
-      // an enemy veteran that actually hurt you, seen going down
-      else if ((ev.rank >= 3 || ev.kills >= 3) && this.opts.seesPoint(ev.x, ev.y)) this.aces.push(rec);
+      // an enemy veteran that actually hurt you, seen going down (a Goliath is seen anywhere: it can't hide)
+      else if ((ev.rank >= 3 || ev.kills >= 3) && (UNITS[ev.unitKind].alwaysVisible || this.opts.seesPoint(ev.x, ev.y))) this.aces.push(rec);
     }
   }
 
@@ -134,7 +134,8 @@ export class HeroPresenter {
       announce({
         key: "unit-elite",
         text: `${name} is Elite`,
-        sub: `${stars(3)} ${kind} · ${killsLabel(u.kills)} · self-repairing`,
+        // (elites patch themselves up; a Goliath doesn't: only Menders repair it, GOLIATH.md)
+        sub: `${stars(3)} ${kind} · ${killsLabel(u.kills)}${u.goliath ? "" : " · self-repairing"}`,
         tone: "epic",
         x: u.x,
         y: u.y,

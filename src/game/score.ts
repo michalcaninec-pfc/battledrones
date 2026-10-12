@@ -9,6 +9,7 @@
  */
 import { TICK_RATE } from "../sim/balance";
 import type { Biome, Faction, FxEvent, PowerKind } from "../sim/types";
+import type { Announcement } from "./announce";
 
 export type Wave = "sine" | "square" | "sawtooth" | "triangle";
 export type MusicLayer = "pad" | "bell" | "bass" | "drums" | "arp";
@@ -626,7 +627,25 @@ export class Composer {
 
 // ------------------------------------------------------------ stingers ---
 
-export type StingerKind = "victory" | "defeat" | "epic" | "bad" | "good" | "first-blood";
+/** The stingers: the finale's victory, defeat or draw (Robot Love), and the announced big moments. */
+export type StingerKind = "victory" | "defeat" | "draw" | "epic" | "bad" | "good" | "first-blood";
+
+/**
+ * Which stinger an announcement earns (music.ts plays it at the next beat),
+ * or null. Only lines at priority 2 or better get one: first blood its own,
+ * 'epic' a rising call (an enemy Goliath or HQ destroyed), 'bad' a warning
+ * stab (an enemy Goliath on the field, our HQ fallen), and 'good' only when
+ * it is important. Kind-agnostic on purpose: a feature's banner tone and
+ * priority are its music cue.
+ */
+export function stingerFor(a: Announcement): StingerKind | null {
+  const p = a.priority ?? 2;
+  if (p > 2) return null;
+  if (/first.?blood/i.test(a.key)) return "first-blood";
+  if (a.tone === "epic") return "epic";
+  if (a.tone === "bad") return "bad";
+  return a.tone === "good" && p <= 1 ? "good" : null;
+}
 
 export interface StingerNote {
   /** Start, in beats after the stinger's downbeat. */
@@ -668,6 +687,15 @@ export function stinger(kind: StingerKind, f: Flavour, root: number): StingerNot
         { beat: 4, len: 4, midi: [t], voice: "lead", vel: 0.8 },
         { beat: 4, len: 4, midi: [t - 12, t - 5, t + 3 - 12], voice: "brass", vel: 0.45 },
         { beat: 4, len: 0.8, midi: [t - 24], voice: "tom", vel: 0.9 }
+      ];
+    case "draw": // nobody won (Robot Love): bells rising sweetly over a soft held sixth chord; no fanfare, no lament, no drums
+      return [
+        { beat: 0, len: 1.5, midi: [], voice: "swell", vel: 0.3 },
+        { beat: 0, len: 0.9, midi: [t + 16], voice: "bell", vel: 0.5 },
+        { beat: 0.75, len: 0.9, midi: [t + 19], voice: "bell", vel: 0.5 },
+        { beat: 1.5, len: 0.9, midi: [t + 21], voice: "bell", vel: 0.55 },
+        { beat: 2.25, len: 4, midi: [t, t + 4, t + 9], voice: "brass", vel: 0.35 },
+        { beat: 2.25, len: 3, midi: [t + 24, t + 28], voice: "bell", vel: 0.6 }
       ];
     case "epic": // a rising three-note call over a cymbal swell
       return [
@@ -742,6 +770,12 @@ export interface MoodHooks {
   factionOf(id: number): Faction | null;
   /** Would a strike of radius `r` at (x, y) catch any of our units or buildings? (Default: no.) */
   threatened?(x: number, y: number, r: number): boolean;
+  /**
+   * Is this unit of ours part of the base (awareness.ts baseGoliath: an
+   * anchored Goliath, or any Goliath once the HQ is gone)? Hits on it raise
+   * the base alarm like hits on a building. (Default: no.)
+   */
+  baseUnit?(id: number): boolean;
 }
 
 /**
@@ -792,7 +826,8 @@ export class BattleMood {
         case "hit":
           if (h.spectator ? e.building && h.sees(e.x, e.y) && h.earshot(e.x, e.y) > 0.3 : e.faction === h.player) {
             if (!h.spectator) this.contactAt = t;
-            if (e.building) this.buildingHit(t);
+            // (a Goliath that is our base, or our last life, sounds the alarm like a building)
+            if (e.building || (!h.spectator && h.baseUnit?.(e.id))) this.buildingHit(t);
           }
           break;
         case "death":

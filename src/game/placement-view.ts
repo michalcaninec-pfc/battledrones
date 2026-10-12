@@ -11,8 +11,9 @@
  * with a buzz.
  */
 import { BUILDINGS } from "../sim/balance";
+import { anchoredGoliaths, inGoliathRing } from "../sim/goliath";
 import { inBuildRange, suggestPlacement } from "../sim/placement";
-import type { BuildingKind, World } from "../sim/types";
+import type { BuildingKind, Faction, World } from "../sim/types";
 import { sfx } from "./audio";
 import { setVariant } from "./three/materials";
 import { buildingDef, instance, type ModelInstance } from "./three/models";
@@ -42,8 +43,9 @@ export interface PlacementHooks {
 /** Ghost shake on a refused build (ms) and its amplitude (CSS px). */
 const SHAKE_MS = 220;
 const SHAKE_PX = 4;
-/** The build zone's tint, and the footprint where the ghost may / may not stand (its ghost tints). */
+/** The build zone's tint, an anchored Goliath's build ring (team blue), and the footprint where the ghost may / may not stand (its ghost tints). */
 const ZONE = 0x7ef29b;
+const RING = 0x5aa8ff;
 const GOOD = 0x37d67a;
 const BAD = 0xe25555;
 /** Finger slop around the ghost that still counts as touching it (CSS px). */
@@ -69,7 +71,7 @@ export class PlacementView {
   private swallow = new Set<number>();
   private shake = Infinity;
   private pulse = 0;
-  private zone: { key: string; runs: number[]; loops: Pt[][] } | null = null;
+  private zone: { key: string; runs: number[]; ring: number[]; loops: Pt[][] } | null = null;
   /** Scratch points for a footprint corner bracket. */
   private bracket: Pt[] = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
   private rails: ScreenRect[] = [];
@@ -231,11 +233,14 @@ export class PlacementView {
       return;
     }
     const w = this.h.world;
-    // where you may build: the build-range zone, tinted, with a soft glow under a crisp rounded outline
+    // where you may build: the build-range zone, tinted (an anchored Goliath's ring in team
+    // blue: outposts), with a soft glow under a crisp rounded outline
     const g = v.over;
-    const z = this.buildZone(w);
+    const z = this.buildZone(w, kind);
     g.fillStyle(ZONE, 0.08);
     for (let i = 0; i < z.runs.length; i += 3) g.fillRect(z.runs[i]!, z.runs[i + 1]!, z.runs[i + 2]!, 1);
+    g.fillStyle(RING, 0.14);
+    for (let i = 0; i < z.ring.length; i += 3) g.fillRect(z.ring[i]!, z.ring[i + 1]!, z.ring[i + 2]!, 1);
     g.lineStyle(7, ZONE, 0.12, 0);
     for (const loop of z.loops) g.strokePoints(loop, true);
     g.lineStyle(2, ZONE, 0.8);
@@ -318,21 +323,37 @@ export class PlacementView {
   }
 
   /**
-   * Tiles whose centre is in build range of the base, as horizontal runs
-   * [x, y, length, …] (tiles), and the zone's outline as closed loops with
-   * their tile-step corners rounded off. Recomputed only when the set of
-   * buildings changes.
+   * The build zone (zoneAt): base tiles and ring-only tiles as horizontal
+   * runs [x, y, length, …] (tiles), and the whole zone's outline as closed
+   * loops with their tile-step corners rounded off. Recomputed only when
+   * the buildings or the anchored Goliaths (which stand still) change.
    */
-  private buildZone(w: World): { runs: number[]; loops: Pt[][] } {
+  private buildZone(w: World, kind: BuildingKind): { runs: number[]; ring: number[]; loops: Pt[][] } {
+    const goliaths = kind === "hq" ? [] : anchoredGoliaths(w, PLAYER);
     let key = "";
-    for (const b of w.buildings.values()) if (b.faction === PLAYER) key += `${b.id},`;
+    for (const b of w.buildings.values()) if (b.faction === PLAYER) key += `${b.id}${b.outpost ? "o" : ""},`;
+    for (const g of goliaths) key += `g${g.id}:${g.goliath!.mode}@${g.x},${g.y},`;
     if (this.zone?.key === key) return this.zone;
     const W = w.width;
     const inZone = new Uint8Array(W * w.height);
-    for (let ty = 0; ty < w.height; ty++)
-      for (let tx = 0; tx < W; tx++) if (inBuildRange(w, PLAYER, tx + 0.5, ty + 0.5)) inZone[ty * W + tx] = 1;
-    const at = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < w.height && inZone[y * W + x] === 1;
+    // (with no Goliath anchored there is no ring to test: base range alone)
+    const test: BuildingKind = goliaths.length > 0 ? kind : "hq";
+    for (let ty = 0; ty < w.height; ty++) for (let tx = 0; tx < W; tx++) inZone[ty * W + tx] = zoneAt(w, PLAYER, test, tx, ty);
+    const at = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < w.height && inZone[y * W + x]! > 0;
     const runs: number[] = [];
+    const ring: number[] = [];
+    // (ring-only tiles in runs of their own, for the team tint)
+    for (let ty = 0; ty < w.height; ty++) {
+      let start = -1;
+      for (let tx = 0; tx <= W; tx++) {
+        const on = tx < W && inZone[ty * W + tx] === 2;
+        if (on && start < 0) start = tx;
+        if (!on && start >= 0) {
+          ring.push(start, ty, tx - start);
+          start = -1;
+        }
+      }
+    }
     // boundary edges between grid corners, directed with the zone on their right
     const corner = (x: number, y: number) => y * (W + 1) + x;
     const out = new Map<number, number[]>();
@@ -392,7 +413,7 @@ export class PlacementView {
         if (pts.length >= 3) loops.push(smoothLoop(smoothLoop(pts, 0.42), 0.2));
       }
     }
-    this.zone = { key, runs, loops };
+    this.zone = { key, runs, ring, loops };
     return this.zone;
   }
 
@@ -400,6 +421,18 @@ export class PlacementView {
     if (this.ghost) this.h.view.scene.remove(this.ghost.root);
     this.h.view.screen.remove(this.label);
   }
+}
+
+/**
+ * Whether tile (tx, ty) is in `faction`'s build zone for `kind`, by the
+ * sim's own rule (economy.ts canPlaceBuilding): 1 when its centre is in base
+ * range (sim/placement.ts inBuildRange; outposts never count), 2 when it is
+ * only in the build ring of an anchored Goliath (inGoliathRing; anything but
+ * an HQ goes up there, as an outpost), else 0.
+ */
+export function zoneAt(w: World, faction: Faction, kind: BuildingKind, tx: number, ty: number): 0 | 1 | 2 {
+  if (inBuildRange(w, faction, tx + 0.5, ty + 0.5)) return 1;
+  return kind !== "hq" && inGoliathRing(w, faction, tx, ty, 1) ? 2 : 0;
 }
 
 /** One round of corner cutting on a closed loop: each corner is cut back by at most `cap` tiles (and a quarter edge) along both sides. */

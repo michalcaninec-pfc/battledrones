@@ -6,12 +6,13 @@ import type { Faction, FxEvent, UnitKind, World, Wreck } from "../../sim/types";
 import { announce } from "../announce";
 import { sfx } from "../audio";
 import { discMat, setVariant } from "../three/materials";
-import { instance, unitDef, unitScale, type ModelInstance } from "../three/models";
+import { instance, pileDef, unitDef, unitScale, type ModelInstance } from "../three/models";
 import { TEX, type EmitCfg } from "../three/particles";
 import type { Label } from "../three/screen";
 import { Ease } from "../three/tween";
 import type { View } from "../three/view";
 import type { Fx } from "./fx";
+import { TOPPLE_SLAM_MS } from "./goliath";
 
 /**
  * Battlefield wrecks (sim: salvage.ts). A destroyed combat unit's own model
@@ -21,6 +22,11 @@ import type { Fx } from "./fx";
  * blip for your own). Wrecks show only where you have vision; a wreck you
  * saw is remembered (like a building) until you see that it's gone or it
  * would have burnt out anyway.
+ *
+ * A Goliath leaves no hull: its salvage lies in scrap piles (Wreck.pile)
+ * flung out around it as it slams down (render/goliath.ts topples it), and
+ * a Gantry destroyed mid-build strews piles of its half-built mech. Both
+ * are always seen, so their piles are seen landing even in the fog.
  */
 
 /** Last rendered pose of a unit (EntityRenderer.pose): ground point, body height, hull and turret angles. */
@@ -107,6 +113,8 @@ export class WreckRenderer {
   private views = new Map<number, WreckView>();
   /** Poses of units that died this frame, consumed when their wreck appears. */
   private deaths = new Map<number, { pose: UnitPose | null; ev: Extract<FxEvent, { type: "death" }> }>();
+  /** Goliaths and Gantries that fell this frame (their scrap piles fly out of them), and when (ms after). */
+  private scatters: { x: number; y: number; delay: number }[] = [];
   private collected = new Set<number>();
   private haul: { t: number; v: number }[] = [];
   private lastHaul = -1e9;
@@ -136,7 +144,13 @@ export class WreckRenderer {
   /** Feed every sim fx event through here (before the entity views sync). */
   onFx(ev: FxEvent): void {
     // (robot infantry leaves no wreck: its robots topple and sink away, render/entities.ts)
-    if (ev.type === "death" && ev.unitKind && ev.unitKind !== "harvester" && !isInfantry(ev.unitKind)) {
+    if (ev.type === "death" && ev.unitKind === "goliath") {
+      // (no hull: its piles are thrown out as it slams down)
+      const p = this.opts.pose(ev.id);
+      this.scatters.push({ x: p?.gx ?? ev.x, y: p?.gy ?? ev.y, delay: TOPPLE_SLAM_MS });
+    } else if (ev.type === "death" && ev.buildingKind === "gantry") {
+      this.scatters.push({ x: ev.x, y: ev.y, delay: 250 });
+    } else if (ev.type === "death" && ev.unitKind && ev.unitKind !== "harvester" && !isInfantry(ev.unitKind)) {
       this.deaths.set(ev.id, { pose: this.opts.pose(ev.id), ev });
     } else if (ev.type === "salvage") {
       this.collected.add(ev.wreckId);
@@ -188,6 +202,7 @@ export class WreckRenderer {
     for (const [id, d] of this.deaths)
       if (!live.has(id) && d.ev.air && d.pose?.visible) this.sink(d.ev.unitKind!, d.ev.faction, d.pose);
     this.deaths.clear();
+    this.scatters.length = 0;
 
     for (const [id, v] of this.views) {
       if (live.has(id)) continue;
@@ -232,6 +247,7 @@ export class WreckRenderer {
   // ------------------------------------------------------------ views ---
 
   private create(r: Wreck): WreckView {
+    if (r.pile) return this.createPile(r);
     const air = UNITS[r.kind].domain === "air";
     const m = instance(unitDef(r.kind, r.faction));
     setVariant(m.root, "burnt");
@@ -275,6 +291,67 @@ export class WreckRenderer {
       else if (Math.hypot(p.gx - r.x, p.gy - r.y) > 0.03) this.slide(v, p.gx, p.gy);
     }
     return v;
+  }
+
+  /**
+   * A scrap pile: its own heap of metal and scrap lumps (not a burnt hull),
+   * turned and sized a little differently each. Fresh from a Goliath that
+   * fell or a Gantry that blew up this frame, it is flung out of it in an
+   * arc and lands in a puff of dust.
+   */
+  private createPile(r: Wreck): WreckView {
+    const m = instance(pileDef(r.faction, r.id));
+    const ground = this.v.terrain.surfaceAt(r.x, r.y);
+    m.body.rotation.y = rnd(r.id, 1) * Math.PI * 2;
+    m.root.scale.setScalar(0.85 + rnd(r.id, 2) * 0.3);
+    m.root.position.set(r.x, ground - 0.02, r.y);
+    const auraMat = discMat(0xffb53d, 0);
+    const aura = new THREE.Mesh(auraGeo, auraMat);
+    aura.scale.setScalar(1.4);
+    aura.position.set(r.x, ground + 0.05, r.y);
+    aura.renderOrder = 3;
+    this.group.add(m.root, aura);
+    const v: WreckView = {
+      id: r.id, kind: r.kind, x: r.x, y: r.y, ground, m, aura, auraMat,
+      seen: false, gone: false,
+      expireTick: this.world.tick + r.ttl, coolTick: this.world.tick + r.hot,
+      landing: false, smokeT: 0, glintT: 600 + rnd(r.id, 3) * 1800, phase: rnd(r.id, 4) * Math.PI * 2
+    };
+    this.views.set(r.id, v);
+    let from: { x: number; y: number; delay: number } | null = null;
+    for (const s of this.scatters) if (Math.hypot(s.x - r.x, s.y - r.y) < 5) from = s;
+    if (from) {
+      // (a Goliath and a Gantry are always seen: so is their scrap flying)
+      v.seen = true;
+      this.toss(v, from.x, from.y, from.delay + rnd(r.id, 5) * 160);
+    }
+    return v;
+  }
+
+  /** Flung out of a falling Goliath (or a Gantry going up) at (x, y), after `delay` ms: an arc, then a thump of dust. */
+  private toss(v: WreckView, x: number, y: number, delay: number): void {
+    v.landing = true;
+    const root = v.m.root;
+    const to = root.position.clone();
+    const from = new THREE.Vector3(x, this.v.terrain.surfaceAt(x, y) + 0.9, y);
+    const s = root.scale.x;
+    root.scale.setScalar(1e-4);
+    const spin = (rnd(v.id, 6) - 0.5) * 6;
+    const ry = v.m.body.rotation.y;
+    this.v.tweens.add({
+      dur: 520, delay, owner: v,
+      update: (k) => {
+        root.scale.setScalar(s * Math.min(1, 0.4 + k * 1.5));
+        root.position.lerpVectors(from, to, k);
+        root.position.y += Math.sin(k * Math.PI) * 0.9;
+        v.m.body.rotation.y = ry + spin * (1 - k);
+      },
+      done: () => {
+        v.landing = false;
+        this.fx.dust(v.x, v.y, 2);
+        this.fx.kick(v.x, v.y, 1);
+      }
+    });
   }
 
   /** An aircraft drops from flying height, tumbling, onto its resting spot. */

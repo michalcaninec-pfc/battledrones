@@ -20,7 +20,9 @@ export type MutatorId =
   | "infantrywar"
   | "airborne"
   | "veterans"
-  | "clearskies";
+  | "clearskies"
+  | "nomads"
+  | "robotlove";
 
 export interface Rules {
   /** Scrap each side starts with. */
@@ -64,6 +66,20 @@ export interface Rules {
    * Drop Pods stay on land joined to the side's HQ (world.ts onHomeLand).
    */
   islands?: boolean;
+  /**
+   * Nomads: each side starts with an anchored Goliath where its HQ would
+   * stand, and no HQ. Anchored Goliaths also build Harvesters (goliath.ts
+   * trainableAt); every building is an outpost of one.
+   */
+  nomads?: boolean;
+  /** Robot Love: two enemy Goliaths within GOLIATH.love.range fall in love and the match is a draw (goliath.ts tickLove). */
+  robotLove?: boolean;
+  /**
+   * Island maps: the tile at the centre of each side's starting HQ, so home
+   * land is still known once the HQ has fallen (or, under Nomads, was never
+   * built) and the side plays on round a Goliath (world.ts onHomeLand).
+   */
+  homeTiles?: Record<Faction, [number, number]>;
 }
 
 export const DEFAULT_RULES: Readonly<Rules> = Object.freeze({
@@ -92,8 +108,8 @@ export interface MutatorDef {
   conflicts?: MutatorId[];
 }
 
-/** Ground combat units: the tanks, and the robot infantry squads. */
-export const GROUND_COMBAT: UnitKind[] = ["stinger", "flak-crawler", "mortar", "titan", "lancer", "trooper", "rocket-squad", "sniper"];
+/** Ground combat units: the tanks, the robot infantry squads and the Goliath. */
+export const GROUND_COMBAT: UnitKind[] = ["stinger", "flak-crawler", "mortar", "mastodon", "lancer", "trooper", "rocket-squad", "sniper", "goliath"];
 
 /**
  * What "no ground combat" bans (Air War, Sky Pirates): GROUND_COMBAT, and the
@@ -155,7 +171,8 @@ export const MUTATORS: Record<MutatorId, MutatorDef> = {
     // so no Condor either: NO_GROUND_COMBAT)
     desc: "No ground combat units, Condors, Fab Plants, Assembly Bays or SAM sites: dogfights decide it",
     bansUnits: NO_GROUND_COMBAT,
-    conflicts: ["infantrywar", "airborne"],
+    // (and no Goliath, which Nomads and Robot Love are about)
+    conflicts: ["infantrywar", "airborne", "nomads", "robotlove"],
     bansBuildings: ["fab-plant", "assembly-bay", "sam-site"],
     apply: (r) => {
       r.bannedUnits.push(...NO_GROUND_COMBAT);
@@ -171,7 +188,7 @@ export const MUTATORS: Record<MutatorId, MutatorDef> = {
     desc: "Robot infantry only: no combat vehicles, combat aircraft or Fab Plants",
     bansUnits: NO_VEHICLES,
     bansBuildings: ["fab-plant"],
-    conflicts: ["airwar"],
+    conflicts: ["airwar", "nomads", "robotlove"],
     apply: (r) => {
       r.bannedUnits.push(...NO_VEHICLES);
       r.bannedBuildings.push("fab-plant");
@@ -201,6 +218,23 @@ export const MUTATORS: Record<MutatorId, MutatorDef> = {
     icon: "☀️",
     desc: "No fog of war: both sides see everything",
     apply: (r) => (r.fogOff = true)
+  },
+  nomads: {
+    id: "nomads",
+    name: "Nomads",
+    icon: "🦿",
+    // the base walks: anchored, it takes scrap, builds Harvesters and squads, and buildings go up round it
+    desc: "Each side starts with a Goliath instead of a base",
+    conflicts: ["airwar", "infantrywar"],
+    apply: (r) => (r.nomads = true)
+  },
+  robotlove: {
+    id: "robotlove",
+    name: "Robot Love",
+    icon: "💘",
+    desc: "Two enemy Goliaths that meet fall in love, and the battle ends in a draw",
+    conflicts: ["airwar", "infantrywar"],
+    apply: (r) => (r.robotLove = true)
   }
 };
 

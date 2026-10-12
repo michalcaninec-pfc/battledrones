@@ -51,14 +51,14 @@ describe("command meter", () => {
     w.powers.meter.blue = w.powers.meter.red = 0;
     run(w, 10 * TICK_RATE);
     expect(w.powers.meter.blue).toBeCloseTo(POWERS.passive * 10, 5);
-    // red loses a Titan to blue
-    const t = dummy(w, "titan", "red", 20, 20);
+    // red loses a Mastodon to blue
+    const t = dummy(w, "mastodon", "red", 20, 20);
     t.hp = 0;
     const before = { ...w.powers.meter };
     run(w, 1);
     const tick = POWERS.passive / TICK_RATE;
-    expect(w.powers.meter.red - before.red).toBeCloseTo(UNITS.titan.cost * POWERS.perScrapLost + tick, 5);
-    expect(w.powers.meter.blue - before.blue).toBeCloseTo(UNITS.titan.cost * POWERS.perScrapKilled + tick, 5);
+    expect(w.powers.meter.red - before.red).toBeCloseTo(UNITS.mastodon.cost * POWERS.perScrapLost + tick, 5);
+    expect(w.powers.meter.blue - before.blue).toBeCloseTo(UNITS.mastodon.cost * POWERS.perScrapKilled + tick, 5);
     expect(POWERS.perScrapLost).toBeGreaterThan(POWERS.perScrapKilled * 2); // comeback-weighted
     w.powers.meter.blue = 99.99;
     run(w, 20);
@@ -271,21 +271,21 @@ describe("Sky Hammer", () => {
     const hq = [...w.buildings.values()].find((b) => b.kind === "hq" && b.faction === "red")!;
     const R = POWERS.hammer.radius;
     const at = { x: 30, y: 30 };
-    const centre = dummy(w, "titan", "red", at.x, at.y);
-    const edge = dummy(w, "titan", "red", at.x - R + 0.05, at.y);
+    const centre = dummy(w, "mastodon", "red", at.x, at.y);
+    const edge = dummy(w, "mastodon", "red", at.x - R + 0.05, at.y);
     const air = dummy(w, "raptor", "red", at.x, at.y + 1);
     // (spaced so separation steering doesn't nudge anyone between ticks)
-    const far = dummy(w, "titan", "red", at.x - R - 0.3, at.y + 1.5);
-    const mine = dummy(w, "titan", "blue", at.x, at.y - 1.6);
+    const far = dummy(w, "mastodon", "red", at.x - R - 0.3, at.y + 1.5);
+    const mine = dummy(w, "mastodon", "blue", at.x, at.y - 1.6);
     run(w, 1, [call("blue", "hammer", at.x, at.y)]);
     run(w, telegraphTicks("hammer") - 1);
-    expect(centre.hp).toBe(UNITS.titan.hp);
+    expect(centre.hp).toBe(UNITS.mastodon.hp);
     run(w, 1);
-    expect(UNITS.titan.hp - centre.hp).toBeCloseTo(POWERS.hammer.unitDamage, 5);
-    expect(UNITS.titan.hp - edge.hp).toBeCloseTo(POWERS.hammer.unitDamage * (1 - 0.5 * ((R - 0.05) / R)), 5);
+    expect(UNITS.mastodon.hp - centre.hp).toBeCloseTo(POWERS.hammer.unitDamage, 5);
+    expect(UNITS.mastodon.hp - edge.hp).toBeCloseTo(POWERS.hammer.unitDamage * (1 - 0.5 * ((R - 0.05) / R)), 5);
     expect(air.hp).toBeLessThan(UNITS.raptor.hp); // orbital: hits aircraft too
-    expect(far.hp).toBe(UNITS.titan.hp);
-    expect(mine.hp).toBe(UNITS.titan.hp);
+    expect(far.hp).toBe(UNITS.mastodon.hp);
+    expect(mine.hp).toBe(UNITS.mastodon.hp);
     // a second strike just off the red HQ's edge: buildings take the flat hit
     w.powers.readyAt.blue.hammer = 0;
     run(w, 1 + telegraphTicks("hammer"), [call("blue", "hammer", hq.tx + 1.5, hq.ty - 1)]);
@@ -301,7 +301,7 @@ describe("determinism", () => {
       const w = arena();
       w.seed = 42;
       reveal(w, "blue");
-      for (let i = 0; i < 6; i++) dummy(w, i % 2 ? "stinger" : "titan", "red", 18 + i * 0.7, 20 + (i % 3) * 0.6);
+      for (let i = 0; i < 6; i++) dummy(w, i % 2 ? "stinger" : "mastodon", "red", 18 + i * 0.7, 20 + (i % 3) * 0.6);
       run(w, 1, [call("blue", "barrage", 19.5, 20.5)]);
       run(w, 12, [call("blue", "emp", 19, 20)]);
       run(w, 40);

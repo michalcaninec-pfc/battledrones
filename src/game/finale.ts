@@ -1,13 +1,18 @@
+import type { Announcement } from "./announce";
+import type { Faction } from "../sim/types";
 import type { Fx } from "./render/fx";
 import { Ease } from "./three/tween";
 import type { View } from "./three/view";
 
 /**
- * The cinematic HQ kill (render only — the sim has already stopped at the
- * winner): everything drops to slow motion, the camera glides and zooms onto
- * the dying HQ, a staged chain of explosions rolls across its footprint, a
- * white flash and a heavy shake, then real time resumes and the end screen
- * arrives at ~2.8 s.
+ * The cinematic end of a match (render only — the sim has already stopped
+ * at the winner). A kill: everything drops to slow motion, the camera
+ * glides and zooms onto what decided it (an HQ, or a side's last Goliath
+ * toppling), a staged chain of explosions rolls across it, a white flash
+ * and a heavy shake, then real time resumes and the end screen arrives at
+ * ~2.8 s. Robot Love: no blasts and no slow motion — the camera glides onto
+ * the two Goliaths as they meet (render/goliath.ts plays their part), a
+ * burst of hearts, the banner, and the draw.
  */
 
 export const FINALE = {
@@ -26,6 +31,13 @@ export const FINALE = {
   doneAt: 2800
 };
 
+/** Robot Love's beats (real ms): the heart burst as their hands meet, the banner, the end screen. */
+export const LOVE_FINALE = {
+  burstAt: 4300,
+  bannerAt: 4700,
+  doneAt: 7800
+};
+
 export interface FinaleOpts {
   view: View;
   fx: Fx;
@@ -35,6 +47,8 @@ export interface FinaleOpts {
   size: number;
   /** False when no HQ died (an op ended on its objective): no blasts, just the slow-mo, flash and banner. */
   blasts?: boolean;
+  /** Robot Love: the two Goliaths meet at (x, y) — no blasts, no slow motion, hearts (see LOVE_FINALE). */
+  love?: boolean;
   /** Screen point (CSS px) the HQ should end up under: the middle of the free area, clear of the HUD dock. */
   screenX?: number;
   screenY?: number;
@@ -58,7 +72,7 @@ export class Finale {
   private pan: { x0: number; y0: number; t: number } | null;
 
   constructor(private o: FinaleOpts) {
-    this.apply(FINALE.slow);
+    this.apply(o.love ? 1 : FINALE.slow);
     const rig = o.view.rig;
     this.pan = { x0: rig.x, y0: rig.y, t: 0 };
   }
@@ -83,6 +97,10 @@ export class Finale {
     this.t += realMs;
     this.glide(realMs);
     const v = this.o.view;
+    if (this.o.love) {
+      this.loveBeats(realMs);
+      return;
+    }
     // staged chain of blasts across the footprint, outside-in (real time,
     // like everything here, so a slow frame can't reorder the beats)
     const n = this.o.blasts === false ? 0 : Math.min(FINALE.blasts, this.spots.length);
@@ -92,8 +110,10 @@ export class Finale {
       const half = this.o.size / 2;
       const bx = this.o.x + dx * half;
       const by = this.o.y + dy * half;
+      // (sized for what died: an HQ's full chain, a Goliath's a little smaller)
+      const k = Math.min(1, this.o.size / 3);
       this.o.fx.explosion(
-        { type: "explosion", x: this.o.x, y: this.o.y, size: last ? 2.2 : 1.3, air: false, kind: "building" },
+        { type: "explosion", x: this.o.x, y: this.o.y, size: (last ? 2.2 : 1.3) * k, air: false, kind: "building" },
         { x: bx, y: by, h: v.terrain.heightAt(bx, by) + 0.4 }
       );
       this.blasts++;
@@ -121,6 +141,26 @@ export class Finale {
     }
   }
 
+  /** Robot Love: a burst of hearts where they meet, the banner, then the draw. */
+  private loveBeats(realMs: number): void {
+    const t = this.t;
+    const prev = t - realMs;
+    const { x, y } = this.o;
+    if (prev < LOVE_FINALE.burstAt && t >= LOVE_FINALE.burstAt) {
+      const h = this.o.view.terrain.heightAt(x, y);
+      this.o.fx.heartBurst(x, y, h + 2.2);
+      this.o.fx.sound("love", x, y, 1);
+    }
+    if (!this.flashed && t >= LOVE_FINALE.bannerAt) {
+      this.flashed = true;
+      this.o.onFlash();
+    }
+    if (t >= LOVE_FINALE.doneAt) {
+      this.done = true;
+      this.o.onDone();
+    }
+  }
+
   /** Slow (or restore) every render clock: GameScene scales the frame delta for tweens, particles and effects by it. */
   private apply(k: number): void {
     this.timeScale = k;
@@ -134,6 +174,33 @@ export class Finale {
  */
 export function finaleOutcome(o: { won: boolean; newRecord: boolean; spectator: boolean; survival: boolean }): "victory" | "defeat" {
   return o.won || o.newRecord || (o.spectator && !o.survival) ? "victory" : "defeat";
+}
+
+/** What decided the match, for the finale's banner: an HQ, a side's last Goliath, or Robot Love (a draw). */
+export type FinaleCause = "hq" | "goliath" | "love";
+
+/**
+ * The finale's banner: who won and what decided it. The keys stay the
+ * announcer's (victory, defeat, hq-destroyed for a spectator, draw), only
+ * the words change with the cause: an HQ ("Enemy HQ destroyed"), a side's
+ * last Goliath ("Our last Goliath has fallen"), or two Goliaths in love.
+ */
+export function finaleBanner(o: {
+  cause: FinaleCause;
+  winner: Faction | "draw";
+  player: Faction;
+  spectator: boolean;
+  x: number;
+  y: number;
+}): Announcement {
+  const { x, y } = o;
+  if (o.winner === "draw" || o.cause === "love")
+    return { key: "draw", text: "💘 They fell in love", sub: "It's a draw", tone: "good", priority: 0, x, y, say: "They fell in love. It's a draw." };
+  const loser = o.winner === "blue" ? "Red" : "Blue";
+  const what = o.cause === "goliath" ? "Goliath" : "HQ";
+  if (o.spectator) return { key: "hq-destroyed", text: `${loser} ${what} destroyed`, sub: `${loser === "Red" ? "Blue" : "Red"} wins`, tone: "epic", priority: 0, x, y };
+  if (o.winner === o.player) return { key: "victory", text: `Enemy ${what} destroyed`, sub: "Victory", tone: "epic", priority: 0, x, y };
+  return { key: "defeat", text: o.cause === "goliath" ? "Our last Goliath has fallen" : "Our HQ has fallen", sub: "Defeat", tone: "bad", priority: 0, x, y };
 }
 
 /** Zoom the finale settles at: a push-in, but never further out than `atLeast`. */

@@ -60,7 +60,7 @@ describe("squads", () => {
     expect(squadAlive({ kind: "sniper", hp: UNITS.sniper.hp })).toBe(2);
     expect(squadAlive({ kind: "rocket-squad", hp: UNITS["rocket-squad"].hp / 2 })).toBe(2);
     // vehicles are one "robot": full firepower whatever their HP
-    expect(squadFirepower({ kind: "titan", hp: 10 })).toBe(1);
+    expect(squadFirepower({ kind: "mastodon", hp: 10 })).toBe(1);
   });
 
   it("deal damage in proportion to the robots still standing", () => {
@@ -111,7 +111,7 @@ describe("precision damage (Sniper Teams)", () => {
   });
 
   it("is feeble against vehicles and buildings", () => {
-    expect(snipe("titan")).toBeCloseTo(shotDamage(UNITS.sniper) * 0.25, 9);
+    expect(snipe("mastodon")).toBeCloseTo(shotDamage(UNITS.sniper) * 0.25, 9);
     expect(snipe("stinger")).toBeCloseTo(shotDamage(UNITS.sniper) * 0.4, 9);
     const w = createWorld(20, 20);
     spawnUnit(w, "sniper", "blue", 4.5, 5.5);
@@ -417,45 +417,45 @@ describe("a Condor shot down", () => {
 });
 
 describe("crushing", () => {
-  it("a moving enemy Titan deals 30 HP/s to a squad it rolls over", () => {
+  it("a moving enemy Mastodon deals 30 HP/s to a squad it rolls over", () => {
     const w = createWorld(30, 12);
-    const titan = spawnUnit(w, "titan", "blue", 3.5, 5.5);
-    titan.cooldown = 1e9; // (never fires: only the treads hurt)
+    const mastodon = spawnUnit(w, "mastodon", "blue", 3.5, 5.5);
+    mastodon.cooldown = 1e9; // (never fires: only the treads hurt)
     const squad = spawnUnit(w, "trooper", "red", 10.5, 5.5);
     freeze(w, squad);
-    const fx = run(w, 20 * TICK_RATE, [{ type: "move", faction: "blue", unitIds: [titan.id], x: 20.5, y: 5.5 }]);
-    expect(titan.x).toBeGreaterThan(18); // it drove straight through
+    const fx = run(w, 20 * TICK_RATE, [{ type: "move", faction: "blue", unitIds: [mastodon.id], x: 20.5, y: 5.5 }]);
+    expect(mastodon.x).toBeGreaterThan(18); // it drove straight through
     const lost = UNITS.trooper.hp - squad.hp;
     const hits = fx.filter((e) => e.type === "hit" && e.id === squad.id);
     expect(lost).toBeGreaterThan(0);
     expect(lost).toBeCloseTo(hits.length * (INFANTRY.crushDps / TICK_RATE), 6);
-    expect(hits.every((e) => e.type === "hit" && e.attackerId === titan.id)).toBe(true);
-    expect(fx.some((e) => e.type === "crush" && e.id === squad.id && e.attackerId === titan.id)).toBe(true);
-    // contact lasts as long as the Titan takes to cross its reach and back out
-    const reach = UNITS.titan.radius + INFANTRY.crushReach;
-    expect(hits.length).toBeLessThanOrEqual(Math.ceil((2 * reach) / (UNITS.titan.speed / TICK_RATE)) + 1);
+    expect(hits.every((e) => e.type === "hit" && e.attackerId === mastodon.id)).toBe(true);
+    expect(fx.some((e) => e.type === "crush" && e.id === squad.id && e.attackerId === mastodon.id)).toBe(true);
+    // contact lasts as long as the Mastodon takes to cross its reach and back out
+    const reach = UNITS.mastodon.radius + INFANTRY.crushReach;
+    expect(hits.length).toBeLessThanOrEqual(Math.ceil((2 * reach) / (UNITS.mastodon.speed / TICK_RATE)) + 1);
   });
 
-  it("deals exactly crushDps per second under a Titan that keeps moving, credited to it", () => {
+  it("deals exactly crushDps per second under a Mastodon that keeps moving, credited to it", () => {
     const w = createWorld(30, 12);
-    const titan = spawnUnit(w, "titan", "blue", 5.5, 5.5);
+    const mastodon = spawnUnit(w, "mastodon", "blue", 5.5, 5.5);
     const squad = spawnUnit(w, "trooper", "red", 5.6, 5.5);
     squad.hp = 100;
-    for (let i = 0; i < TICK_RATE; i++) tickCrush(w, [titan]);
+    for (let i = 0; i < TICK_RATE; i++) tickCrush(w, [mastodon]);
     expect(squad.hp).toBeCloseTo(100 - INFANTRY.crushDps, 9);
     squad.hp = 2;
-    tickCrush(w, [titan]);
-    titan.cooldown = 1e9;
+    tickCrush(w, [mastodon]);
+    mastodon.cooldown = 1e9;
     step(w, []);
     const kill = w.fx.find((e) => e.type === "death" && e.id === squad.id);
-    expect(kill).toMatchObject({ killerId: titan.id, killerKind: "titan" });
-    expect(titan.kills).toBe(1);
+    expect(kill).toMatchObject({ killerId: mastodon.id, killerKind: "mastodon" });
+    expect(mastodon.kills).toBe(1);
   });
 
-  it("a stationary Titan crushes nothing", () => {
+  it("a stationary Mastodon crushes nothing", () => {
     const w = createWorld(30, 12);
-    const titan = spawnUnit(w, "titan", "blue", 5.5, 5.5);
-    titan.cooldown = 1e9;
+    const mastodon = spawnUnit(w, "mastodon", "blue", 5.5, 5.5);
+    mastodon.cooldown = 1e9;
     const squad = spawnUnit(w, "trooper", "red", 5.7, 5.5);
     freeze(w, squad);
     const fx = run(w, 3 * TICK_RATE);
@@ -465,15 +465,15 @@ describe("crushing", () => {
 
   it("friendly squads step aside and take nothing", () => {
     const w = createWorld(30, 12);
-    const titan = spawnUnit(w, "titan", "blue", 3.5, 5.5);
+    const mastodon = spawnUnit(w, "mastodon", "blue", 3.5, 5.5);
     const squad = spawnUnit(w, "trooper", "blue", 10.5, 5.5);
     let closest = Infinity;
     for (let i = 0; i < 20 * TICK_RATE; i++) {
-      step(w, i === 0 ? [{ type: "move", faction: "blue", unitIds: [titan.id], x: 20.5, y: 5.5 }] : []);
-      closest = Math.min(closest, Math.hypot(titan.x - squad.x, titan.y - squad.y));
+      step(w, i === 0 ? [{ type: "move", faction: "blue", unitIds: [mastodon.id], x: 20.5, y: 5.5 }] : []);
+      closest = Math.min(closest, Math.hypot(mastodon.x - squad.x, mastodon.y - squad.y));
       expect(w.fx.some((e) => e.type === "crush" || e.type === "hit")).toBe(false);
     }
-    expect(titan.x).toBeGreaterThan(18); // the Titan was never held up
+    expect(mastodon.x).toBeGreaterThan(18); // the Mastodon was never held up
     expect(squad.hp).toBe(UNITS.trooper.hp);
     expect(Math.abs(squad.y - 5.5)).toBeGreaterThan(0.2); // the squad stepped off the line
     expect(closest).toBeGreaterThan(0.5);
@@ -500,8 +500,8 @@ describe("crushing", () => {
     run(w, 30 * TICK_RATE, [{ type: "move", faction: "blue", unitIds: [tank.id, squad.id], x: 15.5, y: 10.5 }]);
     expect(tank.order.type).toBe("idle");
     expect(squad.order.type).toBe("idle");
-    // a parked Stinger, Titan or harvester on its way, whichever way it faces
-    for (const kind of ["stinger", "titan", "harvester"] as const)
+    // a parked Stinger, Mastodon or harvester on its way, whichever way it faces
+    for (const kind of ["stinger", "mastodon", "harvester"] as const)
       for (const facing of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
         const w2 = createWorld(30, 30);
         const v = spawnUnit(w2, kind, "blue", 12.5, 10.5);
@@ -523,7 +523,7 @@ describe("crushing", () => {
     expect(tank.x).toBeGreaterThan(18);
     expect(squad.x).toBe(10.5);
     expect(squad.y).toBe(5.5);
-    expect(squad.hp).toBe(UNITS.trooper.hp); // only Titans crush
+    expect(squad.hp).toBe(UNITS.trooper.hp); // only Mastodons crush
   });
 });
 
@@ -665,7 +665,7 @@ describe("determinism", () => {
   function play(seed: number): string {
     const w = createMapWorld("riverlands", { seed, objectives: true });
     const ai = { blue: createAiState("balanced", "normal", seed), red: createAiState("rush", "normal", seed + 1) };
-    const extra: Record<Faction, { condor: number; squads: number[]; titan: number }> = { blue: null!, red: null! };
+    const extra: Record<Faction, { condor: number; squads: number[]; mastodon: number }> = { blue: null!, red: null! };
     for (const f of ["blue", "red"] as const) {
       const hq = hqOf(w, f)!;
       const s = f === "blue" ? 1 : -1;
@@ -674,7 +674,7 @@ describe("determinism", () => {
       extra[f] = {
         condor: spawnUnit(w, "condor", f, x, y).id,
         squads: [spawnUnit(w, "sniper", f, x + s, y).id, spawnUnit(w, "rocket-squad", f, x, y + s).id],
-        titan: spawnUnit(w, "titan", f, x - s, y + s).id
+        mastodon: spawnUnit(w, "mastodon", f, x - s, y + s).id
       };
     }
     const lines: string[] = [];
@@ -684,7 +684,7 @@ describe("determinism", () => {
         const e = extra[f];
         if (i === 5) cmds.push({ type: "board", faction: f, unitIds: e.squads, carrierId: e.condor });
         if (i === 80) cmds.push({ type: "unload", faction: f, unitIds: [e.condor], x: 28, y: 28 });
-        if (i === 90) cmds.push({ type: "attackMove", faction: f, unitIds: [e.titan], x: 28, y: 28 });
+        if (i === 90) cmds.push({ type: "attackMove", faction: f, unitIds: [e.mastodon], x: 28, y: 28 });
       }
       step(w, cmds);
       for (const ev of w.fx) if (ev.type === "embark" || ev.type === "disembark" || ev.type === "crush" || ev.type === "death") lines.push(`${w.tick} ${JSON.stringify(ev)}`);

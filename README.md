@@ -51,25 +51,38 @@ it there (`/v10/`, say) once newer releases have changed the battle code.
   telegraphed with a public warning circle: land yours, dodge theirs. The
   radio shouts "Incoming artillery!", the music swells on impact, and
   kill streaks, hero toasts and the after-action report name the strike.
-- **15 units** across a real counter web: Stinger light tanks, Flak
-  Crawlers, long-range Mortars, super-heavy Titans, water-crossing Lancer
+- **16 units** across a real counter web: Stinger light tanks, Flak
+  Crawlers, long-range Mortars, super-heavy Mastodons, water-crossing Lancer
   hover tanks, Scouts, Wasp strike drones, Raptor interceptors, Hornet
   bombers, Mender repair drones, Harvesters, three kinds of robot infantry
-  squad (Troopers, Rocket Squads, Sniper Teams) and the Condor dropship.
-- **9 buildings** with a tech tree: HQ, Fab Plant, Airpad, Assembly Bay,
-  Tech Lab, forward Depots, Turrets, SAM Sites and Radar.
+  squad (Troopers, Rocket Squads, Sniper Teams), the Condor dropship and the
+  Goliath walking mech.
+- **10 buildings** with a tech tree: HQ, Fab Plant, Airpad, Assembly Bay,
+  Tech Lab, forward Depots, Turrets, SAM Sites, Radar and the Gantry.
 - **Robot infantry**: every side starts with a Trooper Squad beside its HQ,
   and an Assembly Bay trains more: Troopers (cheap rifles that hit air too),
-  Rocket Squads (Titan and Hornet killers) and, with a Tech Lab, Sniper
+  Rocket Squads (Mastodon and Hornet killers) and, with a Tech Lab, Sniper
   Teams that stay hidden in woods until they fire. A squad is one unit of
   several robots that fall one by one as it takes damage, and it shoots
   weaker with each loss. Squads cross woods and mud at full speed, take half
-  damage in woods and capture Uplinks twice as fast. Titans crush them.
+  damage in woods and capture Uplinks twice as fast. Mastodons crush them.
 - **The Condor dropship** flies two squads over water, rock and anything
   else. Select squads and tap the Condor to load them, then long-press the
   map to fly there and drop them, or tap ⇣ Unload (key U). If it's shot
   down over land its squads bail out hurt; over water or rock they go down
   with it.
+- **The Goliath**: a giant walking mech, built at the top of the tech tree
+  on a **Gantry** (it needs a Fab Plant, an Airpad, a Tech Lab and an
+  Assembly Bay; one per side). Anchor it on open ground (⚓, key G) and it
+  becomes a base on legs: harvesters unload at it, it trains robot infantry,
+  and buildings go up within 3 tiles of it as **outposts**, however far from
+  home. It fights with shoulder mortars, an eye laser, arm cannons and
+  machine guns that hit aircraft too, and loses them one by one as it's
+  hurt; only Menders repair it, and each weapon reboots as it's mended. The
+  enemy always sees it (and the Gantry building it), two empty Condors can
+  airlift it, each one costs 25% more for every Goliath you already have,
+  and a side is beaten only when its HQ and every Goliath are gone. A dead
+  one topples and scatters its scrap in piles across the battlefield.
 - **6 maps in 5 biomes** — the classic Proving Grounds, Riverlands, Dune
   Sea, Frostbite, Ashlands and the big tropical **Archipelago** — with
   terrain that matters: roads, mud, woods (cover), fords, bridges,
@@ -83,38 +96,45 @@ it there (`/v10/`, say) once newer releases have changed the battle code.
   keep killing garrisons. Two bridges join the HQs' landmasses, scrap is
   scarce, both sides start with a Condor and a squad aboard, and a side
   that loses its last Condor gets a free one flown in 45 s later. Tap an
-  island with a loaded Condor selected to drop its troops.
+  island with a loaded Condor selected to drop its troops. Two Condors can
+  lift a Goliath onto an island, where it anchors and trains squads like
+  anywhere else.
 - Armor classes and damage types, dodgeable artillery shells and bombs,
   splash damage, veterancy, retaliation AI for idle units.
 - An AI commander with **6 personalities** (Balanced, Rush, Air Swarm,
   Boom, Skyforce, Ironclad) and **3 difficulties**, playing by the same
   rules and fog of war as you — it gathers real waves, fights for the
   Uplinks, answers your infantry, flies Condor drops at your harvesters and
-  calls down strikes — or watch two AIs fight. Matches are tuned for
+  calls down strikes, and rolls out Goliaths to dig in at distant fields
+  and hunt yours — or watch two AIs fight. Matches are tuned for
   comebacks: the side ahead at 4:00 now wins 70% of AI-vs-AI games, not
   90%, and a decided AI-vs-AI game runs a median of about 10½ minutes.
 - **Veteran heroes**: units that rank up earn callsigns ("★★ Viper ·
   Lancer · 9 kills"), promotions pop over the unit, elites shimmer gold, and
   you hear about it when a named unit falls; the AI pulls its wounded
   veterans back too.
-- **A cinematic HQ kill** (slow motion, camera glide, rolling blasts, white
-  flash) and an **after-action report**: an army-strength timeline with
-  first blood, the biggest battle and the turning point marked, your MVP
-  unit, correct kill stats and one tip for next time.
+- **A cinematic HQ (or last Goliath) kill** (slow motion, camera glide,
+  rolling blasts, white flash) and an **after-action report**: an
+  army-strength timeline with first blood, the biggest battle and the
+  turning point marked (and the first Goliath, or an HQ that fell while a
+  Goliath fought on), your MVP unit, correct kill stats and one tip for
+  next time.
 - **Last Stand** survival mode: hold your base against endless, announced
   waves — Air Raids, Armour Columns, Artillery, Mixed Assaults and robot
   Bot Swarms, four of them in each block of five and then a Boss — from
   shifting map edges. Call waves early for bonus scrap; your best per map
   and difficulty is saved.
-- **A Commander career**: XP and ten ranks from Cadet to Marshal, 16
-  medals (Lightning War, Comeback, Ace, Giant Slayer, Orbital, Scavenger,
-  Steady Hands…) popping in on the end
+- **A Commander career**: XP and ten ranks from Cadet to Marshal, 17
+  medals (Lightning War, Comeback, Ace, Giant Slayer, Goliath Slayer,
+  Orbital, Scavenger, Steady Hands…) popping in on the end
   screen, three stars per map and difficulty, and a **Daily Op** — one seeded
   match a day, the same for everyone, with a win streak.
-- **Nine mutators** to twist a skirmish for both sides: Blitz, Gold Rush,
+- **Eleven mutators** to twist a skirmish for both sides: Blitz, Gold Rush,
   Glass Cannons, Rapid Fab, Air War, Infantry War (robot infantry only),
-  Airborne (start with a Condor and one of each squad), Veterans and Clear
-  Skies.
+  Airborne (start with a Condor and one of each squad), Veterans, Clear
+  Skies, Nomads 🦿 (each side starts with an anchored Goliath instead of a
+  base) and Robot Love 💘 (two enemy Goliaths that meet fall in love, and
+  the battle ends in a draw).
 - **Ops**: a campaign of eight short missions with a twist and three stars
   each — hold the Riverlands bridge against a Rush, deliver 10,000 scrap under
   Air Swarm raids, decapitate a base with a fixed strike group, win on a
@@ -129,7 +149,10 @@ it there (`/v10/`, say) once newer releases have changed the battle code.
   buildings rise out of the ground when placed and smoke when hurt. Robot
   squads run with their feet planted (no sliding), raise their guns to
   fire and topple one robot at a time; the Condor hovers low, drops its
-  ramp and lets its squads jump down from a troop bay you can see into. The
+  ramp and lets its squads jump down from a troop bay you can see into; the
+  Goliath strides on planted feet, digs in on hydraulics and stabiliser
+  spikes, and topples when it dies, and the Gantry builds it in stages you
+  can watch. The
   landscape is a heightfield draped with each map's painted terrain — rock
   outcrops rise into mesas whose cliffs and crags are textured with the
   painted stone of their biome, rivers and lava cut real channels under
@@ -146,7 +169,8 @@ it there (`/v10/`, say) once newer releases have changed the battle code.
 - An **adaptive soundtrack** synthesised live: each biome has its own mode,
   chords and instruments; bass, drums and an arpeggio join as fights heat up
   near your camera, an alarm motif plays when your base is under attack,
-  and matches end on a fanfare or a lament. Quiet biome ambience (wind,
+  and matches end on a fanfare, a lament or (a Robot Love draw) a sweet
+  sting. Quiet biome ambience (wind,
   birds, desert hiss, lava rumble) fills the lulls; Music / Effects / Voice
   toggles live in the pause menu.
 - Punchy, readable fights: hit flashes, damage-trail health bars, team
@@ -154,12 +178,13 @@ it there (`/v10/`, say) once newer releases have changed the battle code.
   on-screen-only camera shake, and gold "+100" pops with a rising coin
   chime when your harvesters deliver.
 - **Voices and a radio announcer.** Every unit class answers in its own
-  synthesized robot voice when selected, ordered, built or promoted. Titans
+  synthesized robot voice when selected, ordered, built or promoted. Mastodons
   growl, Wasps buzz, Menders ring and Troopers chatter. A radio commander
   calls out what matters: "Warning: our HQ is under attack", "Enemy
-  aircraft detected", "Enemy troops landing!", "Squad lost", "Construction
-  complete". Kill streaks get banners: First blood, Double kill, Triple
-  kill, Rampage, Titan down. Spectators get a neutral caster.
+  aircraft detected", "Enemy troops landing!", "Enemy Goliath in
+  production", "Squad lost", "Construction complete". Kill streaks get
+  banners: First blood, Double kill, Triple kill, Rampage, Mastodon down,
+  Goliath down. Spectators get a neutral caster.
 - **Battle awareness and game speed.** Pulsing arrows at the screen edge
   point at off-screen fights (red when you're hit, amber when you attack);
   tap one, or ⚡, to glide there. "Enemy drones inbound — Flak, Raptors or a
@@ -167,7 +192,8 @@ it there (`/v10/`, say) once newer releases have changed the battle code.
   winning the fight on screen, and alerts sit in a slim ticker instead of
   over the battlefield. Play at 1×, 1.5× or 2× (4× when watching), or hold
   the clock to fast-forward — the game drops back to 1× by itself when an
-  enemy strike, a raid or an attack on your HQ needs your hands. First-time
+  enemy strike, a raid or an attack on your HQ (or, once it has fallen, on
+  a Goliath) needs your hands. First-time
   tips arrive one at a time, never over a banner.
 - **Thumb-friendly command.** Three squad chips: hold to save a group, tap
   to select it, double-tap to fly there; each shows its unit, count and
@@ -187,7 +213,9 @@ npm run build          # typecheck + production build into dist/
 npm run smoke          # headless Playwright test of the real touch flow (against dist/)
 npm run build:pages    # build current game + all version tags into _site/
 npm run balance duels  # cost-equal unit duel matrix
-npm run balance matches [map]   # AI-vs-AI round robin (openers + objectives; --classic / --no-objectives)
+npm run balance matches [map]   # AI-vs-AI round robin (openers + objectives; --classic / --no-objectives),
+                       # with the Goliath numbers (--no-goliath bans it, for an A/B run)
+npm run balance goliath [--menders N]   # a Goliath (plus N Menders) vs cost-equal groups of every unit
                        # (any mode takes --tune '{"UNITS.trooper.hp":200}' for an A/B run)
 npx vite-node tools/survival.ts [ai|human|both] [map|all] [easy|normal|hard|all] [seeds] [--calldowns]
                        # Last Stand: waves survived by an AI / scripted-player defender, and scrap
@@ -202,7 +230,8 @@ npx vite-node tools/pacing.ts run out.jsonl --seeds 8 --mirror      # side fairn
 npx vite-node tools/pacing.ts run out.jsonl --with rush --tune '{…}' # one personality's pairings, A/B
 npm run maps           # export map grids to art/maps/*.json (--ascii to preview)
                        # model gallery: npm run dev, then open /tools/models.html
-                       #   (?only=units|buildings|condor|condor-ring, ?anim=walk|idle|aim|fall for the robots)
+                       #   (?only=units|buildings|condor|condor-ring|goliath|gantry, ?anim=walk|idle|aim|fall for
+                       #   the robots, ?icon=goliath|gantry for one model alone, as shot for its HUD portrait)
                        # vehicles reference page: /vehicles.html (built into dist/ too)
                        # battle record viewer: /record-viewer.html[?replay=<record>] (built into dist/ too,
                        #   with battles/showcase/; the game takes ?replay=<record> as well)
@@ -250,6 +279,8 @@ npm run art:textures   # just the biome rock textures the 3D cliffs and crags us
   asset contracts the engine relies on.
 - **`AGENT-BATTLES.md`** — AI models playing each other: the arena, its
   tools, battle records, the LLM plugin and the viewer.
+- **`GOLIATH.md`** — the Goliath and Gantry spec, with how the shipped
+  game differs from it.
 
 ## Architecture
 

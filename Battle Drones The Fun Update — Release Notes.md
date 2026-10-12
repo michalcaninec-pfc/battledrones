@@ -2,6 +2,8 @@
 
 Oct 7, 2026 · @Simon Willison
 
+*The super-heavy tank these notes call the Mastodon shipped as the Titan; it was renamed when the Goliath mech arrived (GOLIATH.md).*
+
 ## What's new
 
 The Fun Update went live at [simonw.github.io/battledrones](https://simonw.github.io/battledrones/) on 7 October 2026 ([PR #3](https://github.com/simonw/battledrones/pull/3)). Every skirmish and Daily Op now opens with a choice, gives the side that's losing a way back, and pulls the armies into the middle of the map. There are also two new ways to play.
@@ -79,7 +81,7 @@ Each side now has four strikes, fired from the round buttons on the right of the
 
 ### Credit and medals
 
-- Big strike kills, such as a Titan, a Hornet or an elite unit, are named on the radio, for example "Enemy Titan destroyed by a Barrage". A strike that destroys a building gets "Direct hit!", and several kills from one strike get banners like "Sky Hammer: triple kill".
+- Big strike kills, such as a Mastodon, a Hornet or an elite unit, are named on the radio, for example "Enemy Mastodon destroyed by a Barrage". A strike that destroys a building gets "Direct hit!", and several kills from one strike get banners like "Sky Hammer: triple kill".
 - The after-action report has a Calldowns row.
 - Two new medals:
   - **Orbital**: destroy 1,000 scrap with one Sky Hammer.
@@ -145,7 +147,7 @@ A crate that would do nothing, such as a repair kit with no wounded units nearby
 
 Destroyed units now leave wrecks worth scrap, so a fight in the open pays whoever holds the ground afterwards.
 
-- Every unit except a harvester leaves a wreck worth 30% of its cost, ground and air alike. That ranges from 23 scrap for a Scout to 143 for a Titan. Buildings leave no wreck.
+- Every unit except a harvester leaves a wreck worth 30% of its cost, ground and air alike. That ranges from 23 scrap for a Scout to 143 for a Mastodon. Buildings leave no wreck.
 - A wreck is too hot to touch for 2.5 s, then glints gold. It lasts 60 s and fades over its last 10 s.
 - Drive any ground unit over a wreck, harvesters included, to collect all of it at once. Aircraft can't collect. Either side can take any wreck.
 - Your pickups pop a gold "+N" with a coin sound. Collecting 400+ scrap within 9 s triggers a "Salvage haul" banner.
@@ -164,7 +166,7 @@ Combat now hits harder on screen and in your ears. Hits flash, deaths shake the 
 - **Hits**: a unit flashes white for 70 ms, and a building glows for 100 ms. Lost HP lingers as a pale chunk for 300 ms before it drains. Enemy health bars blink below 25%.
 - **Team rings**: a blue or red ring sits under any unit that fired or was hit in the last 3 s, so you can tell sides apart in a melee.
 - **Kills**: an expanding ring in the dead unit's colour plus a two-note ting. Your own losses play a power-down whine.
-- **Screen shake** grows with what died, and only for deaths on screen. A unit gets 90 ms, a Titan or Hornet 140 ms, a small building 250 ms, a 2×2 building 340 ms, and an HQ 600 ms. A Sky Hammer impact shakes for 520 ms.
+- **Screen shake** grows with what died, and only for deaths on screen. A unit gets 90 ms, a Mastodon or Hornet 140 ms, a small building 250 ms, a 2×2 building 340 ms, and an HQ 600 ms. A Sky Hammer impact shakes for 520 ms.
 - **Income**: each harvester delivery pops a gold "+N" over the drop-off. Quick deliveries climb a scale in the map's musical key.
 - **Promotions** pop in a new chevron, and elite units shimmer gold.
 - **Phones** vibrate briefly when you lose a building (Android only).
@@ -198,7 +200,7 @@ Combat now hits harder on screen and in your ears. Hits flash, deaths shake the 
 - Kill banners:
   - First blood
   - Double kill (2 kills within 4 s), Triple kill and Rampage (5)
-  - Titan down, Hornet down, and Elite … down for an elite unit
+  - Mastodon down, Hornet down, and Elite … down for an elite unit
   - Direct hit! when your strike destroys an enemy building
 - Other banners:
   - Uplink captured and Uplink lost
@@ -295,10 +297,10 @@ Last Stand is a survival mode. You defend your HQ against endless waves that kee
 - Clearing the field brings the next wave forward to at most 30 s away. Once the field is clear, the "⏩ Call wave N" chip starts the next wave's 15 s warning straight away and pays a bonus for every second you skip.
 - Each block of five waves has four themed waves in shuffled order, then a boss:
   - **Air Raid**: Wasps, later Hornets and Raptors. It goes for your harvesters.
-  - **Armour Column**: Stingers, later Lancers and Titans.
+  - **Armour Column**: Stingers, later Lancers and Mastodons.
   - **Artillery**: Mortars and Stingers, later Lancers and Flak Crawlers.
   - **Mixed Assault**: a bit of everything.
-  - **Boss**, every 5th wave: Titan Spearhead, Bomber Wing or Elite Strike Force. It heads for your HQ.
+  - **Boss**, every 5th wave: Mastodon Spearhead, Bomber Wing or Elite Strike Force. It heads for your HQ.
 - Waves grow fast. On Normal, wave 1 is worth 468 scrap, wave 5 about 2,650 and wave 10 about 6,560. A wave holds at most 36 units.
 - Waves arrive at rank 1 from wave 6 and at rank 2 from wave 12. Bosses get one extra rank, up to rank 3.
 - Waves come from the far edges and corners of the map, and never from the same direction twice in a row.
@@ -328,11 +330,11 @@ Ops is a campaign of 8 short missions, each with a twist and three stars to win.
 | --- | --- | --- | --- | --- |
 | 1 Bridgehead | Riverlands vs a Hard Rush that starts with 6 extra Stingers. You hold two bridge Turrets with a small force. | Hold out for 4:00. You fail if both bridge Turrets fall. | Lose 6 units or fewer | Both bridge Turrets standing |
 | 2 Harvest Moon | Dune Sea vs a Hard Air Swarm raiding your harvesters. | Deliver 10,000 scrap before 5:00. Salvage doesn't count. | Lose 1 Harvester or fewer | Finish in under 4:00 |
-| 3 Decapitation | Proving Grounds. You have a fixed strike group of 2 Titans, 3 Stingers, 2 Hornets, 2 Raptors and a Mender: no scrap, no factories, no calldowns. | Destroy the enemy HQ before 3:00. | Lose 4 units or fewer | Finish in under 2:00 |
+| 3 Decapitation | Proving Grounds. You have a fixed strike group of 2 Mastodons, 3 Stingers, 2 Hornets, 2 Raptors and a Mender: no scrap, no factories, no calldowns. | Destroy the enemy HQ before 3:00. | Lose 4 units or fewer | Finish in under 2:00 |
 | 4 Frozen Assets | Frostbite vs Boom. You have 3,000 scrap, no income, no harvesters, no calldowns, and a ready-built Fab Plant, Airpad and Tech Lab. | Destroy the enemy HQ before 6:00. | Destroy 4 enemy Harvesters | Finish in under 4:00 |
 | 5 Sky Pirates | Ashlands. Air units only, against SAM sites already in place. | Destroy the enemy HQ before 7:00. | Lose 12 units or fewer | Finish in under 4:30 |
 | 6 Glass Jaw | Dune Sea vs Rush. Both sides deal double damage and build twice as fast. | Destroy the enemy HQ before 6:00. | Lose no buildings | Finish in under 4:00 |
-| 7 Iron Tide | Frostbite vs a Hard Ironclad. | Hold out for 6:00. | Destroy 2 enemy Titans | Lose 1 building or fewer |
+| 7 Iron Tide | Frostbite vs a Hard Ironclad. | Hold out for 6:00. | Destroy 2 enemy Mastodons | Lose 1 building or fewer |
 | 8 Last Light | Riverlands. Fast Last Stand waves: the first at 0:45, then one every 40 s. You start with 1,200 scrap and a ready base. | Survive 10 waves. | Lose 2 buildings or fewer | Finish in under 7:00 |
 
 - Losing your HQ always fails an op, and destroying the enemy HQ always wins it.
@@ -395,7 +397,7 @@ There are 16 medals, each worth 25 career XP. Last Stand awards only Holdout and
 | Flawless | Win | Lose 5 units or fewer |
 | Tycoon | Win | Harvest twice the enemy's scrap, and at least 3,000 |
 | Ace | Any result | One unit gets 9 kills |
-| Giant Slayer | Any result | Destroy 3 enemy Titans |
+| Giant Slayer | Any result | Destroy 3 enemy Mastodons |
 | Air Superiority | Any result | Destroy 30 enemy aircraft |
 | Iron Wall | Any result | Your defences kill 30 enemy units |
 | Exterminator | Any result | Destroy 60 enemy units |
@@ -516,7 +518,7 @@ Half the units in an 8-vs-8 Stinger fight now die in 7.5 s instead of 5.0 s. In 
 | Stinger | 170 | 255 |
 | Flak Crawler | 190 | 285 |
 | Mortar | 130 | 195 |
-| Titan | 700 | 1,050 |
+| Mastodon | 700 | 1,050 |
 | Lancer | 270 | 405 |
 | Wasp | 135 | 205 |
 | Raptor | 175 | 265 |
@@ -546,7 +548,7 @@ The six AI personalities aren't new, but each was retuned:
 | Air Swarm | Airpad first, constant Wasp raids, bombers later | 1,200 → 1,700 |
 | Boom | Extra harvesters, a forward Depot, one huge late push | 2,000 (unchanged) |
 | Skyforce | Air first: Wasps, Raptors and Hornets, plus a few Stingers and Flak Crawlers from a late Fab Plant | 1,300 → 2,000 |
-| Ironclad | A Turret, then a rushed Tech Lab for Titans, Lancers and Mortars | 1,800 → 1,500 |
+| Ironclad | A Turret, then a rushed Tech Lab for Mastodons, Lancers and Mortars | 1,800 → 1,500 |
 
 &#91;embedded content: DESIGN.md and commit f3b1851 · 1,200 AI-vs-AI matches on Normal, before and after the update\]
 

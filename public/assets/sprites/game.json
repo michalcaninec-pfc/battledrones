@@ -1543,7 +1543,7 @@
      }
     },
     {
-     "filename": "u/blue/titan",
+     "filename": "u/blue/mastodon",
      "rotated": false,
      "trimmed": false,
      "frame": {
@@ -1568,7 +1568,7 @@
      }
     },
     {
-     "filename": "u/blue/titan-turret",
+     "filename": "u/blue/mastodon-turret",
      "rotated": false,
      "trimmed": false,
      "frame": {
@@ -1968,7 +1968,7 @@
      }
     },
     {
-     "filename": "u/red/titan",
+     "filename": "u/red/mastodon",
      "rotated": false,
      "trimmed": false,
      "frame": {
@@ -1993,7 +1993,7 @@
      }
     },
     {
-     "filename": "u/red/titan-turret",
+     "filename": "u/red/mastodon-turret",
      "rotated": false,
      "trimmed": false,
      "frame": {

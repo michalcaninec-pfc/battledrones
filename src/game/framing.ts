@@ -1,7 +1,7 @@
 import { BUILDINGS } from "../sim/balance";
 import { predictOpenerSite } from "../sim/openers";
 import type { Faction, World } from "../sim/types";
-import { buildingCenter, hqOf, isResource } from "../sim/world";
+import { hqOf, isResource } from "../sim/world";
 
 /** An axis-aligned box in tile units. */
 export interface Box {
@@ -23,15 +23,31 @@ export interface Insets {
 const START_UNIT_REACH = 8;
 
 /**
- * The opening shot: the HQ, its home field, where the opener's factory
- * goes and the units the side starts with (the Trooper Squad on the HQ's
- * far flank), so the player sees their whole start at a glance.
+ * Where a side's base is: its HQ's footprint or, with no HQ (Nomads, or the
+ * HQ lost), the ground under its first Goliath — the base that walks. Null
+ * when it has neither.
+ */
+export function homeBox(w: World, faction: Faction): Box | null {
+  const hq = hqOf(w, faction);
+  if (hq) {
+    const size = BUILDINGS.hq.size;
+    return { x0: hq.tx, y0: hq.ty, x1: hq.tx + size, y1: hq.ty + size };
+  }
+  let g: { x: number; y: number; id: number } | null = null;
+  for (const u of w.units.values()) if (u.goliath && u.faction === faction && (!g || u.id < g.id)) g = u;
+  return g ? { x0: g.x - 1, y0: g.y - 1, x1: g.x + 1, y1: g.y + 1 } : null;
+}
+
+/**
+ * The opening shot: the HQ (or under Nomads the anchored Goliath), its home
+ * field, where the opener's factory goes and the units the side starts with
+ * (the Trooper Squad on the HQ's far flank), so the player sees their whole
+ * start at a glance.
  */
 export function startBox(w: World, faction: Faction): Box | null {
-  const hq = hqOf(w, faction);
-  if (!hq) return null;
-  const size = BUILDINGS.hq.size;
-  const box: Box = { x0: hq.tx, y0: hq.ty, x1: hq.tx + size, y1: hq.ty + size };
+  const home = homeBox(w, faction);
+  if (!home) return null;
+  const box: Box = { ...home };
   const add = (x0: number, y0: number, x1: number, y1: number) => {
     box.x0 = Math.min(box.x0, x0);
     box.y0 = Math.min(box.y0, y0);
@@ -39,7 +55,7 @@ export function startBox(w: World, faction: Faction): Box | null {
     box.y1 = Math.max(box.y1, y1);
   };
   // the nearest field: its closest tile plus the rest of that patch
-  const c = buildingCenter(hq);
+  const c = { x: (home.x0 + home.x1) / 2, y: (home.y0 + home.y1) / 2 };
   let near: { x: number; y: number } | null = null;
   let nearD = Infinity;
   for (let ty = 0; ty < w.height; ty++)

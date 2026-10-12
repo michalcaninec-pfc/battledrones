@@ -529,8 +529,10 @@ export class PowerRenderer {
       const p = this.opts.pos(id);
       if (!p) continue;
       const b = this.world.buildings.get(id);
-      const r = b ? 0.42 : 0.26;
-      const h = p.h + (b ? 0.3 : 0.12);
+      // (a Goliath crackles all over: it's twice an HQ's height)
+      const giant = !b && !!this.world.units.get(id)?.goliath;
+      const r = b ? 0.42 : giant ? 0.85 : 0.26;
+      const h = p.h + (b ? 0.3 : giant ? 1.3 : 0.12);
       // a flickering blue haze says "frozen" at a glance
       a.fillStyle(0x7fd4ff, 0.12 + 0.12 * Math.random()).fillCircle(p.x, p.y, r * 1.35, h);
       if (Math.random() < dtMs / 90) this.v.particles.emit(SPARKS, p.x + (Math.random() - 0.5) * r, p.y + (Math.random() - 0.5) * r, h, 1);

@@ -99,6 +99,8 @@ interface Memo {
   launchHp: number;
   turnedBack: boolean;
   built: number;
+  /** Id of the newest Condor the plan has flown (Condors come in id order). */
+  lastAdopted: number;
   lostTick: number;
   /** Enemies a called-off drop ran into: where they were seen, remembered until `until` (fog hides them again on the way home). */
   threats: (Sighting & { until: number })[];
@@ -110,7 +112,7 @@ function memo(s: AiState): Memo {
   if (!m) {
     m = {
       phase: "ready", condorId: null, squads: [], since: 0, waypoint: null, drop: null, goal: null,
-      raiders: [], raidUntil: 0, field: null, lastDrop: -1e9, launchHp: 0, turnedBack: false, built: 0, lostTick: -1e9,
+      raiders: [], raidUntil: 0, field: null, lastDrop: -1e9, launchHp: 0, turnedBack: false, built: 0, lastAdopted: -1, lostTick: -1e9,
       threats: []
     };
     memos.set(s, m);
@@ -185,6 +187,13 @@ export interface CondorContext {
   hqC: { x: number; y: number };
   /** A real attack on the base is under way: no drops, and a loaded Condor sets its squads down at home. */
   threatened: boolean;
+  /** Condors on (or held for) a Goliath's lift (ai/goliath.ts liftCondors): never ours to fly. */
+  skip?: ReadonlySet<number>;
+}
+
+/** The Condor the drop plan flies (it is never taken for a Goliath's lift), or null. */
+export function dropCondorId(s: AiState): number | null {
+  return memos.get(s)?.condorId ?? null;
 }
 
 /** One decision pass of the drop plan: board, fly, drop, raid, come home. */
@@ -206,10 +215,16 @@ export function planCondor(w: World, faction: Faction, s: AiState, ctx: CondorCo
 
   // --- our Condor (built at the airpad): track it, notice when it's lost --
   noteLoss(w, m);
+  // (a Condor on a Goliath's lift is the lift's: an order to it would redirect or set down the Goliath)
+  const lifting = (u: Unit) => u.order.type === "lift" || !!ctx.skip?.has(u.id);
   let c = m.condorId !== null ? w.units.get(m.condorId) : undefined;
+  if (c && lifting(c)) {
+    c = undefined;
+    m.condorId = null; // (not lost: lent out)
+  }
   if (!c) {
     for (const u of w.units.values())
-      if (u.faction === faction && u.kind === "condor") {
+      if (u.faction === faction && u.kind === "condor" && !lifting(u)) {
         c = u;
         break;
       }
@@ -219,7 +234,8 @@ export function planCondor(w: World, faction: Faction, s: AiState, ctx: CondorCo
       return cmds;
     }
     m.condorId = c.id;
-    m.built++;
+    if (c.id > m.lastAdopted) m.built++; // (one back from a Goliath's lift isn't a new one)
+    m.lastAdopted = Math.max(m.lastAdopted, c.id);
     setPhase(m, "ready", w.tick);
     m.squads = [];
     m.turnedBack = false;

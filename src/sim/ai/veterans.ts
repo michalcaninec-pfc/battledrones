@@ -25,6 +25,7 @@ export function isWoundedVeteran(u: Unit): boolean {
     u.rank >= VETERAN_RETREAT.minRank &&
     u.kind !== "mender" &&
     u.kind !== "harvester" &&
+    u.kind !== "goliath" && // (its own planner backs it off: ai/goliath.ts)
     u.hp < UNITS[u.kind].hp * VETERAN_RETREAT.hpFrac
   );
 }

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { DIFFICULTY, createAiState, tickAi, type AiState } from "../sim/ai/commander";
-import { BUILDINGS, ECONOMY, TICK_RATE, UNITS } from "../sim/balance";
+import { BUILDINGS, ECONOMY, GOLIATH, TICK_RATE, UNITS } from "../sim/balance";
 import { canPlaceBuilding, nearestReachableResource } from "../sim/economy";
 import { isVisible, tickFog } from "../sim/fog";
 import { unitSeenBy } from "../sim/infantry";
@@ -8,7 +8,7 @@ import { createMapWorld, mapById } from "../sim/maps";
 import { OPENERS, OPENER_IDS, allowedOpener, applyOpener, openerBlocked, pickAiOpener, type OpenerId } from "../sim/openers";
 import { step } from "../sim/sim";
 import type { Building, Command, Faction, FxEvent, Unit, World } from "../sim/types";
-import { buildingCenter, hqOf } from "../sim/world";
+import { buildingCenter, domainOf } from "../sim/world";
 import { sfx } from "./audio";
 import { Controller, PLAYER, type TapHit } from "./controller";
 import { GestureRecognizer, isHoldRelease, type GesturePointer } from "./gestures";
@@ -19,11 +19,11 @@ import { BattleMood } from "./score";
 import { voices, type VoiceHooks } from "./voices";
 import { Announcer } from "./announcer";
 import { Awareness } from "./awareness-view";
-import { calldownThreatens, planTicks } from "./awareness";
+import { baseGoliath, calldownThreatens, planTicks } from "./awareness";
 import { HINTS } from "./hints";
 import { SurvivalPresenter, finishRun } from "./survival";
 import { chronicleOf, type Chronicle } from "./chronicle";
-import { Finale, finaleOutcome, finaleZoom, freeAreaOffset } from "./finale";
+import { Finale, finaleBanner, finaleOutcome, finaleZoom, freeAreaOffset, type FinaleCause } from "./finale";
 import { HeroPresenter } from "./hero-fx";
 import { aiSeed, aiStrategy, announceRules, opEnemyAi, settleCareer } from "./meta";
 import { OpsPresenter } from "./ops";
@@ -39,7 +39,7 @@ import { CommandUi } from "../ui/command";
 import { showOpenerPicker } from "../ui/openers";
 import { createPowerPanel, type PowerPanel } from "../ui/powers";
 import { createObjectivePill, type ObjectivePill } from "../ui/objectives";
-import { fitZoom, hudInsets, startBox } from "./framing";
+import { fitZoom, homeBox, hudInsets, startBox } from "./framing";
 import { Stage } from "./three/stage";
 import { Terrain3D, type TerrainArt } from "./three/terrain";
 import { Particles } from "./three/particles";
@@ -103,7 +103,8 @@ export class GameScene {
   private heroes!: HeroPresenter;
   private chronicle!: Chronicle;
   private finale: Finale | null = null;
-  private finaleAt: { x: number; y: number; size: number } | null = null;
+  /** Where the match was decided (the deciding HQ or last Goliath's death), sized for what died. */
+  private finaleAt: { x: number; y: number; size: number; cause: FinaleCause } | null = null;
   /** Ops: briefing banner, countdowns and star notices (null outside ops). */
   private ops: OpsPresenter | null = null;
   private acc = 0;
@@ -235,7 +236,12 @@ export class GameScene {
       sees: (x, y) => this.seesPoint(x, y),
       factionOf: (id) => (this.world.units.get(id) ?? this.world.buildings.get(id))?.faction ?? null,
       // (the siren's rule: a strike that would catch our units or buildings)
-      threatened: (x, y, r) => calldownThreatens(this.world, PLAYER, x, y, r)
+      threatened: (x, y, r) => calldownThreatens(this.world, PLAYER, x, y, r),
+      // (an anchored Goliath, or the last of the base once the HQ is gone, is the base)
+      baseUnit: (id) => {
+        const u = this.world.units.get(id);
+        return !!u && baseGoliath(this.world, u);
+      }
     });
     music.play("battle", this.world.biome);
     const inView = (x: number, y: number) => rig.onScreen(x, y);
@@ -300,8 +306,9 @@ export class GameScene {
       notify: (msg, tone, x, y) => this.hud?.notice(msg, tone, x, y)
     });
 
-    const focus = gameMode.spectator ? null : hqOf(this.world, PLAYER);
-    const c = gameMode.op?.focus ?? (focus ? buildingCenter(focus) : { x: this.world.width / 2, y: this.world.height / 2 });
+    // (the HQ, or under Nomads the anchored Goliath: framing.ts homeBox)
+    const focus = gameMode.spectator ? null : homeBox(this.world, PLAYER);
+    const c = gameMode.op?.focus ?? (focus ? { x: (focus.x0 + focus.x1) / 2, y: (focus.y0 + focus.y1) / 2 } : { x: this.world.width / 2, y: this.world.height / 2 });
     rig.zoom = this.clampedZoom(DEFAULT_ZOOM);
     rig.centerOn(c.x, c.y);
     this.targetZoom = rig.zoom;
@@ -460,13 +467,18 @@ export class GameScene {
       if (!kf) return;
       Object.assign(this.world, structuredClone(kf));
       this.finale = null;
+      this.finaleAt = null;
       this.ended = false;
     }
     while (this.world.tick < target && !this.world.winner) {
       const cmds = feed.commands(this.world.tick);
       if (!cmds) break;
       step(this.world, cmds);
-      for (const ev of this.world.fx) this.chronicle.onFx(ev);
+      // (a seek to the end steps the deciding tick itself: the finale still names what decided it)
+      for (const ev of this.world.fx) {
+        this.chronicle.onFx(ev);
+        this.noteDecider(ev);
+      }
       this.chronicle.tick();
       feed.afterTick(this.world, true);
     }
@@ -671,8 +683,10 @@ export class GameScene {
       settleCareer(this.world, PLAYER); // XP, medals, stars (spectators: no-op)
       this.playFinale(() => {
         // at the flash the score resolves into a fanfare / lament; the SFX jingle covers music-off
-        const outcome = finaleOutcome({ won, newRecord: !!run?.isNew, spectator: gameMode.spectator, survival: !!this.survival });
-        if (!music.finale(outcome) && !gameMode.spectator) sfx.play(outcome);
+        // (Robot Love: a draw resolves on its own sweet sting; its chime has already rung for music-off)
+        const draw = this.world.winner === "draw";
+        const outcome = draw ? "draw" : finaleOutcome({ won, newRecord: !!run?.isNew, spectator: gameMode.spectator, survival: !!this.survival });
+        if (!music.finale(outcome) && !gameMode.spectator && outcome !== "draw") sfx.play(outcome);
       });
     }
   }
@@ -683,45 +697,48 @@ export class GameScene {
   }
 
   /**
-   * The HQ kill: slow motion, a camera glide onto the wreck, rolling blasts,
-   * a white flash with the result line, then the after-action report.
+   * The kill that decided it (an HQ, or a side's last Goliath): slow
+   * motion, a camera glide onto the wreck, rolling blasts, a white flash
+   * with the result line, then the after-action report. Robot Love: the
+   * camera glides onto the two Goliaths as they meet, hearts, and a draw.
    */
   private playFinale(stinger: () => void): void {
     const winner = this.world.winner!;
     // an op that ended on its objective has no HQ wreck: look where it was decided, skip the blasts
     const opEnd = this.world.ops?.result;
-    const at = (opEnd?.byGoal ? { x: opEnd.x, y: opEnd.y, size: 3 } : null) ??
-      this.finaleAt ?? { x: this.world.width / 2, y: this.world.height / 2, size: 3 };
+    const love = winner === "draw" ? this.world.love ?? null : null;
+    if (love) this.entities.love(love.ids, love.x, love.y);
+    const at = (love ? { x: love.x, y: love.y, size: 2, cause: "love" as const } : null) ??
+      (opEnd?.byGoal ? { x: opEnd.x, y: opEnd.y, size: 3, cause: "hq" as const } : null) ??
+      this.finaleAt ?? { x: this.world.width / 2, y: this.world.height / 2, size: 3, cause: "hq" as const };
     const spec = gameMode.spectator;
-    const won = winner === PLAYER;
     this.glide = null;
     this.gest.reset(); // a drag or pinch in progress lets go of the camera
     this.boxRect = null;
     this.ctrl.clearSelection();
     this.ctrl.placing = null;
     const rig = this.stage.rig;
-    const zoom = finaleZoom(rig.zoom, DEFAULT_ZOOM);
+    // (Robot Love pushes in close: it's their eyes and the hearts you want to see)
+    const zoom = love ? Math.min(MAX_ZOOM, Math.max(rig.zoom * 1.5, 72)) : finaleZoom(rig.zoom, DEFAULT_ZOOM);
     const free = freeAreaOffset();
     this.finale = new Finale({
       view: this.view,
       fx: this.fx,
-      ...at,
-      blasts: !opEnd?.byGoal,
+      x: at.x,
+      y: at.y,
+      size: at.size,
+      blasts: !opEnd?.byGoal && !love,
+      love: !!love,
       screenX: rig.width / 2 + free.x,
       screenY: rig.height / 2 + free.y,
       onFlash: () => {
         stinger();
-        const loser = winner === "blue" ? "Red" : "Blue";
         announce(
-          this.ops
+          this.ops && !love
             ? this.ops.endAnnouncement()
-            : this.survival
+            : this.survival && !love
             ? { key: "base-overrun", text: "Base overrun", sub: "The HQ has fallen", tone: "bad", priority: 0, x: at.x, y: at.y }
-            : spec
-              ? { key: "hq-destroyed", text: `${loser} HQ destroyed`, sub: `${loser === "Red" ? "Blue" : "Red"} wins`, tone: "epic", priority: 0, x: at.x, y: at.y }
-              : won
-                ? { key: "victory", text: "Enemy HQ destroyed", sub: "Victory", tone: "epic", priority: 0, x: at.x, y: at.y }
-                : { key: "defeat", text: "Our HQ has fallen", sub: "Defeat", tone: "bad", priority: 0, x: at.x, y: at.y }
+            : finaleBanner({ cause: at.cause, winner, player: PLAYER, spectator: spec, x: at.x, y: at.y })
         );
       },
       onDone: () => {
@@ -783,29 +800,50 @@ export class GameScene {
     return { x, y, h: air ? g * 0.3 + AIR_H : g + lift };
   }
 
+  /**
+   * The finale looks at the death that decided the match: the loser's HQ, or its last Goliath (in one
+   * tick unit deaths come before building deaths, and an HQ that falls with them is what decides it).
+   */
+  private noteDecider(ev: FxEvent): void {
+    const w0 = this.world;
+    if (ev.type === "death" && w0.winner && w0.winner !== "draw" && ev.faction !== w0.winner) {
+      if (ev.buildingKind === "hq") this.finaleAt = { x: ev.x, y: ev.y, size: BUILDINGS.hq.size, cause: "hq" };
+      else if (ev.unitKind === "goliath" && this.finaleAt?.cause !== "hq") this.finaleAt = { x: ev.x, y: ev.y, size: 2, cause: "goliath" };
+    }
+  }
+
   private handleFx(ev: FxEvent): void {
     this.chronicle.onFx(ev);
     this.heroes.handleFx(ev);
-    if (ev.type === "death" && ev.buildingKind === "hq")
-      this.finaleAt = { x: ev.x, y: ev.y, size: BUILDINGS.hq.size };
+    this.noteDecider(ev);
     if (this.survival?.handleFx(ev)) return;
     const w = this.world;
     switch (ev.type) {
       case "shot": {
-        if (!this.seesPoint(ev.x, ev.y) && !this.seesPoint(ev.tx, ev.ty)) return;
         const src = w.units.get(ev.sourceId) ?? w.buildings.get(ev.sourceId);
+        // (a Goliath is always seen: its guns flash even in the fog)
+        const always = !!src && "goliath" in src && !!src.goliath;
+        if (!always && !this.seesPoint(ev.x, ev.y) && !this.seesPoint(ev.tx, ev.ty)) return;
         const faction = src?.faction ?? PLAYER;
-        this.entities.fired(ev.sourceId, Math.atan2(ev.tx - ev.x, -(ev.ty - ev.y)));
-        const from = this.entities.muzzle(ev.sourceId) ?? this.at(ev.x, ev.y, ev.fromAir);
+        this.entities.fired(ev.sourceId, Math.atan2(ev.tx - ev.x, -(ev.ty - ev.y)), ev.fx);
+        const from = this.entities.muzzle(ev.sourceId, ev.fx) ?? this.at(ev.x, ev.y, ev.fromAir);
         const jitter = () => (Math.random() - 0.5) * 0.22;
         const to = this.at(ev.tx + jitter(), ev.ty + jitter(), ev.air, 0.22);
         this.fx.shot(ev, from, to, faction);
         break;
       }
-      case "explosion":
+      case "explosion": {
+        // a Goliath's death: no hull fireball, its reactor goes and it topples (render/goliath.ts), seen through any fog
+        const goliath = ev.kind === "unit" ? this.goliathDeathAt(ev.x, ev.y) : null;
+        if (goliath) {
+          const p = this.entities.pos(goliath);
+          this.fx.goliathBlast(p ? { x: p.x, y: p.y, h: p.h + p.top * 0.6 } : this.at(ev.x, ev.y, false, 1.6));
+          break;
+        }
         if (ev.kind === "building" ? !this.buildingBlastShown(ev.x, ev.y, ev.size) : !this.seesPoint(ev.x, ev.y)) return;
         this.fx.explosion(ev, this.at(ev.x, ev.y, ev.air, ev.kind === "building" ? 0.4 : 0.2));
         break;
+      }
       case "heal": {
         if (!this.seesPoint(ev.x, ev.y)) return;
         // (no beam into the fog, or onto a Sniper Team hidden in the woods: it would mark the spot)
@@ -841,9 +879,10 @@ export class GameScene {
             this.lastAlert = this.simSeconds;
             sfx.play("alert", 0.8);
             const hq = ev.building && w.buildings.get(ev.id)?.kind === "hq";
+            const goliath = !ev.building && !!w.units.get(ev.id)?.goliath;
             // (a drop to 1× for this attack already put "Speed 1× — HQ under attack" in the ticker)
-            if (!(hq && this.aware.slowedFor("hq")))
-              this.hud.alert(hq ? "HQ under attack!" : ev.building ? "Base under attack!" : "Units under attack!", ev.x, ev.y);
+            if (!(hq && this.aware.slowedFor("hq")) && !(goliath && this.aware.slowedFor("goliath")))
+              this.hud.alert(hq ? "HQ under attack!" : goliath ? "Goliath under attack!" : ev.building ? "Base under attack!" : "Units under attack!", ev.x, ev.y);
           }
         }
         this.hud.ping(ev.x, ev.y);
@@ -895,10 +934,10 @@ export class GameScene {
    */
   private buildingBlastShown(x: number, y: number, size: number): boolean {
     if (!this.ctrl.showFog || this.world.winner) return true;
-    // (the death event right after the explosion says whose it was)
+    // (the death event right after the explosion says whose it was; a Gantry is always in sight)
     for (const e of this.world.fx)
       if (e.type === "death" && e.buildingKind !== null && e.x === x && e.y === y) {
-        if (e.faction === this.fogSide) return true;
+        if (e.faction === this.fogSide || BUILDINGS[e.buildingKind].alwaysVisible) return true;
         break;
       }
     const x0 = x - size / 2;
@@ -906,6 +945,12 @@ export class GameScene {
     for (let dy = 0; dy < size; dy++)
       for (let dx = 0; dx < size; dx++) if (this.tileVisible(x0 + dx + 0.5, y0 + dy + 0.5)) return true;
     return false;
+  }
+
+  /** The Goliath that died at (x, y) this tick, if the unit blast there is a Goliath's (its death event says so). */
+  private goliathDeathAt(x: number, y: number): number | null {
+    for (const e of this.world.fx) if (e.type === "death" && e.unitKind === "goliath" && e.x === x && e.y === y) return e.id;
+    return null;
   }
 
   /**
@@ -1000,6 +1045,8 @@ export class GameScene {
         g.lineStyle(1.5, 0xffe066, 0.8).lineBetween(c.x, c.y, sb.rally.x, sb.rally.y).strokeCircle(sb.rally.x, sb.rally.y, 0.16);
       }
     }
+    // Goliaths' build rings, threat rings and anchoring arcs (read through the fog: they're always seen)
+    this.entities.goliathMarks(this.view.over, this.ctrl.selectedUnits);
     this.survival?.drawOverlay(performance.now());
     this.place.draw();
   }
@@ -1020,10 +1067,29 @@ export class GameScene {
       if (!p) continue;
       const s = rig.project(p.x, p.y, p.top + 0.12);
       if (s.behind) continue;
+      if (u.goliath) {
+        // a Goliath's bar is wider and taller, notched where each weapon goes offline
+        const gw = Math.min(120, Math.max(60, (UNITS[u.kind].radius * 2.4) / rig.worldPerPx(p.x, p.y)));
+        // (amber while that weapon is down: offline, or rebooting after the Menders brought it back)
+        GOLIATH_MARK_WEAPONS.forEach((k, i) => (goliathDown[i] = !u.goliath!.weapons[k].online));
+        this.juice.healthBar(ctx, u.id, s.x - gw / 2, s.y - 11, gw, u.hp / max, u.faction === PLAYER, 5, GOLIATH_MARKS, goliathDown);
+        continue;
+      }
       const bw = Math.min(64, Math.max(30, (UNITS[u.kind].radius * 2.2) / rig.worldPerPx(p.x, p.y)));
       this.juice.healthBar(ctx, u.id, s.x - bw / 2, s.y - 10, bw, u.hp / max, u.faction === PLAYER);
       // the load rides 2 px under the health bar, in the same frame style
       if (harvesterLoad) this.juice.meter(ctx, s.x - bw / 2, s.y - 4, bw, 3, u.cargo / ECONOMY.harvesterCapacity, "#ffd66e");
+    }
+    // infantry training under our own anchored Goliaths
+    for (const u of w.units.values()) {
+      const head = u.goliath?.queue[0];
+      if (!head || u.faction !== PLAYER || !this.entities.isShown(u.id)) continue;
+      const p = this.entities.pos(u.id);
+      if (!p) continue;
+      const s = rig.project(p.x, p.y, p.h);
+      if (s.behind) continue;
+      const mw = Math.min(90, Math.max(44, 1.6 / rig.worldPerPx(p.x, p.y)));
+      this.juice.meter(ctx, s.x - mw / 2, s.y + 6, mw, 4, 1 - head.remaining / (UNITS[head.kind].buildTime * TICK_RATE), "#6eb0ff");
     }
     for (const b of w.buildings.values()) {
       const size = BUILDINGS[b.kind].size;
@@ -1037,12 +1103,12 @@ export class GameScene {
         const s = rig.project(p.x, p.y, p.top + 0.1);
         if (!s.behind) this.juice.healthBar(ctx, b.id, s.x - bw / 2, s.y - 11, bw, ratio, b.faction === PLAYER, 5);
       }
-      // production progress under our factories
+      // production progress under our factories (and under an enemy Gantry: its Goliath is public)
       const head = b.queue[0];
-      if (head && b.faction === PLAYER) {
+      if (head && (b.faction === PLAYER || BUILDINGS[b.kind].alwaysVisible)) {
         const total = UNITS[head.kind].buildTime * TICK_RATE;
         const s = rig.project(p.x, b.ty + size, p.h - 0.4);
-        if (!s.behind) this.juice.meter(ctx, s.x - bw / 2, s.y - 8, bw, 4, 1 - head.remaining / total, "#6eb0ff");
+        if (!s.behind) this.juice.meter(ctx, s.x - bw / 2, s.y - 8, bw, 4, 1 - head.remaining / total, b.faction === PLAYER ? "#6eb0ff" : "#ff7a6a");
       }
     }
     // veterancy chevrons float above the unit, on the device pixel grid (crisp, and no shimmer as the camera glides)
@@ -1135,7 +1201,7 @@ export class GameScene {
       const d = Math.hypot(s.x - sx, s.y - sy);
       if (d < r && d < bestD) {
         bestD = d;
-        best = u.faction === PLAYER ? { kind: "ownUnit", id: u.id } : { kind: "enemy", id: u.id, targetsAir: UNITS[u.kind].domain === "air" };
+        best = u.faction === PLAYER ? { kind: "ownUnit", id: u.id } : { kind: "enemy", id: u.id, targetsAir: domainOf(u) === "air" };
       }
     }
     if (best.kind !== "ground") return best;
@@ -1207,7 +1273,8 @@ export class GameScene {
         if (!released) return;
         // a long-press released without dragging (the degenerate box): an armed
         // calldown fires there (press and hold to aim), as a tap would; else, with
-        // loaded Condors selected, they fly there and drop their squads
+        // loaded Condors selected, they fly there and drop their squads (and a
+        // lift selected flies its Goliath there and sets it down)
         if (isHoldRelease(b.x0, b.y0, sx, sy)) {
           const p = this.worldAt(sx, sy);
           if (this.powerUi?.tapWorld(p.x, p.y)) return;
@@ -1250,7 +1317,8 @@ export class GameScene {
         }
         const p = this.worldAt(sx, sy);
         let hit = this.pick(sx, sy);
-        // right-click on our own Condor with squads selected (or a squad with Condors selected) loads it
+        // right-click on our own Condor with squads selected (or a squad with Condors selected) loads it,
+        // and on our own Goliath with two empty Condors selected lifts it
         if (hit.kind === "ownUnit" && this.ctrl.boardTap(hit.id)) return;
         // right-click never re-selects; own entities count as ground
         if (hit.kind === "ownUnit" || hit.kind === "ownBuilding") hit = { kind: "ground" };
@@ -1339,6 +1407,7 @@ export class GameScene {
         this.hud.togglePause();
       } else if (e.key === "q") this.ctrl.selectArmy();
       else if (e.key === "u") this.ctrl.unloadSelected();
+      else if (e.key === "g") this.ctrl.toggleAnchor(); // selected Goliaths anchor, or pack up
       else if (e.key === "Delete") this.ctrl.sellSelected();
       else if (e.key === ".") this.aware.cycleSpeed();
       else if (e.key === "j") this.aware.jump();
@@ -1390,6 +1459,12 @@ export class GameScene {
     this.stage.destroy();
   }
 }
+
+/** Where a Goliath's weapons go offline, notched on its health bar (mortars, laser, cannons). */
+const GOLIATH_MARK_WEAPONS = ["mortars", "laser", "cannons"] as const;
+const GOLIATH_MARKS = GOLIATH_MARK_WEAPONS.map((k) => GOLIATH.weapons[k].lostBelow);
+/** Which of those weapons are down (refilled per Goliath as its bar is drawn). */
+const goliathDown = [false, false, false];
 
 /** The centre of the device pixel under CSS coordinate `v`. */
 function pxCentre(v: number, dpr: number): number {

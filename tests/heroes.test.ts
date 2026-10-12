@@ -83,9 +83,9 @@ describe("AI veterans fall back when badly hurt", () => {
   const setup = () => {
     const w = createSkirmishWorld();
     const hq = buildingCenter(hqOf(w, "red")!);
-    const vet = spawnUnit(w, "titan", "red", 20, 24);
+    const vet = spawnUnit(w, "mastodon", "red", 20, 24);
     vet.rank = 2;
-    vet.hp = UNITS.titan.hp * 0.3;
+    vet.hp = UNITS.mastodon.hp * 0.3;
     vet.order = { type: "attackMove", x: 10, y: 38 };
     return { w, hq, vet };
   };
@@ -104,7 +104,7 @@ describe("AI veterans fall back when badly hurt", () => {
   it("prefers a Mender behind the unit, and leaves healthy or green units alone", () => {
     const { w, hq, vet } = setup();
     const m = spawnUnit(w, "mender", "red", (vet.x + hq.x) / 2, (vet.y + hq.y) / 2);
-    const healthy = spawnUnit(w, "titan", "red", 21, 24);
+    const healthy = spawnUnit(w, "mastodon", "red", 21, 24);
     healthy.rank = 3;
     const rookie = spawnUnit(w, "stinger", "red", 22, 24);
     rookie.hp = 5;
@@ -239,13 +239,13 @@ describe("chronicle analysis", () => {
     expect(pickTip(idle)).toMatch(/idle .* 45%/);
     const won = { ...base, won: true, built: { blue: { "flak-crawler": 3 }, red: {} } };
     expect(pickTip(won)).toMatch(/harder AI/);
-    // a swarm of robot infantry met with no splash or Snipers; Titans met with no Rocket Squads
-    const swarm = { ...base, built: { blue: { "flak-crawler": 3, titan: 6 }, red: { trooper: 7, "rocket-squad": 3 } } };
+    // a swarm of robot infantry met with no splash or Snipers; Mastodons met with no Rocket Squads
+    const swarm = { ...base, built: { blue: { "flak-crawler": 3, mastodon: 6 }, red: { trooper: 7, "rocket-squad": 3 } } };
     expect(pickTip(swarm)).toMatch(/10 infantry squads.*Mortars/);
     expect(pickTip({ ...swarm, built: { ...swarm.built, blue: { "flak-crawler": 3, mortar: 2 } } })).not.toMatch(/infantry/);
-    const titans = { ...base, built: { blue: { "flak-crawler": 3 }, red: { titan: 5 } } };
-    expect(pickTip(titans)).toMatch(/5 Titans.*Rocket Squads/);
-    expect(pickTip({ ...titans, built: { ...titans.built, blue: { "flak-crawler": 3, "rocket-squad": 3 } } })).not.toMatch(/Titans/);
+    const mastodons = { ...base, built: { blue: { "flak-crawler": 3 }, red: { mastodon: 5 } } };
+    expect(pickTip(mastodons)).toMatch(/5 Mastodons.*Rocket Squads/);
+    expect(pickTip({ ...mastodons, built: { ...mastodons.built, blue: { "flak-crawler": 3, "rocket-squad": 3 } } })).not.toMatch(/Mastodons/);
   });
 
   it("records a real match: samples, kills, and an MVP that matches the best unit", () => {
@@ -298,8 +298,8 @@ describe("promotion titles", () => {
     setTerrain(w, 10, 10, Terrain.Forest);
     spawnUnit(w, "scout", "blue", 5.5, 10.5); // 5 tiles off: the woods tile is in sight
     const sniper = spawnUnit(w, "sniper", "red", 10.5, 10.5);
-    const titan = spawnUnit(w, "titan", "red", 8.5, 13.5);
-    sniper.rank = titan.rank = 2;
+    const mastodon = spawnUnit(w, "mastodon", "red", 8.5, 13.5);
+    sniper.rank = mastodon.rank = 2;
     w.tick = 100;
     tickFog(w);
     expect(isVisible(w, "blue", 10, 10)).toBe(true);
@@ -316,7 +316,7 @@ describe("promotion titles", () => {
     // (a Veterans crate promotes everything near the collector, the hidden sniper included)
     hp.handleFx({ type: "rankUp", id: sniper.id });
     expect(titles).toEqual([]);
-    hp.handleFx({ type: "rankUp", id: titan.id });
+    hp.handleFx({ type: "rankUp", id: mastodon.id });
     expect(titles).toEqual(["HARDENED"]);
   });
 });

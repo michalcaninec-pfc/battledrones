@@ -349,7 +349,7 @@ describe("crate rewards", () => {
   it("veterans: +1 rank to the claimer and allies within 3 tiles, with the XP that rank takes", () => {
     const { w, c } = crateWorld("veterans");
     const claimer = spawnUnit(w, "stinger", "blue", 20, 20);
-    const ally = spawnUnit(w, "titan", "blue", 22, 20);
+    const ally = spawnUnit(w, "mastodon", "blue", 22, 20);
     const elite = spawnUnit(w, "lancer", "blue", 19, 21);
     elite.rank = 3;
     const far = spawnUnit(w, "wasp", "blue", 20 + D.veteranRadius + 0.5, 20);
@@ -369,14 +369,14 @@ describe("crate rewards", () => {
 
   it("repair: own units within 4 tiles heal half their max HP", () => {
     const { w, c } = crateWorld("repair");
-    const a = spawnUnit(w, "titan", "blue", 21, 20);
+    const a = spawnUnit(w, "mastodon", "blue", 21, 20);
     a.hp = 100;
     const b = spawnUnit(w, "stinger", "blue", 20, 22);
     b.hp = UNITS.stinger.hp - 20;
     const far = spawnUnit(w, "stinger", "blue", 25, 20);
     far.hp = 50;
     claimCrate(w, c, "blue", a.id);
-    expect(a.hp).toBeCloseTo(100 + UNITS.titan.hp * D.repairShare, 6);
+    expect(a.hp).toBeCloseTo(100 + UNITS.mastodon.hp * D.repairShare, 6);
     expect(b.hp).toBe(UNITS.stinger.hp);
     expect(far.hp).toBe(50);
     expect(claimed(w).scrap).toBe(0);

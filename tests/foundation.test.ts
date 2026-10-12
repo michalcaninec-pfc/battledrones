@@ -45,13 +45,13 @@ describe("kill credit and death events", () => {
 
   it("credits the killing unit and emits a death event with the killer", () => {
     const w = createWorld(20, 20);
-    const titan = spawnUnit(w, "titan", "blue", 5.5, 5.5);
+    const mastodon = spawnUnit(w, "mastodon", "blue", 5.5, 5.5);
     const victim = spawnUnit(w, "harvester", "red", 8.5, 5.5); // unarmed, can't fight back
     victim.hp = 30;
     const fx = collect(w, 50);
     const death = fx.find((e) => e.type === "death");
-    expect(death).toMatchObject({ type: "death", id: victim.id, faction: "red", unitKind: "harvester", killerId: titan.id, killerKind: "titan" });
-    expect(titan.kills).toBe(1);
+    expect(death).toMatchObject({ type: "death", id: victim.id, faction: "red", unitKind: "harvester", killerId: mastodon.id, killerKind: "mastodon" });
+    expect(mastodon.kills).toBe(1);
     expect(w.factions.blue.stats.unitsKilled).toBe(1);
   });
 
@@ -67,7 +67,7 @@ describe("kill credit and death events", () => {
 
   it("counts destroyed buildings for the attacker", () => {
     const w = createWorld(20, 20);
-    spawnUnit(w, "titan", "blue", 5.5, 5.5);
+    spawnUnit(w, "mastodon", "blue", 5.5, 5.5);
     const radar = spawnBuilding(w, "radar", "red", 8, 5);
     radar.hp = 40;
     const fx = collect(w, 60);
