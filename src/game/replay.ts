@@ -9,6 +9,12 @@
  *     npm run dev, then /?replay=battles/<file>.json reaches the project's own files: tools/arena.ts watch does this)
  *   /?replay=battles/<file>.json&follow                      (dev builds) a live battle: re-read every second
  *
+ * A record names the release that replays it (`version`, "v10"). On the
+ * published site, where every release is at /battledrones/<tag>/, a record
+ * from another release goes there (`elsewhere`): a link straight away, a
+ * pasted record when the player says so, handed over in sessionStorage
+ * (`/?replay=session:`).
+ *
  * It checks the world hash every 100 ticks as it plays, and says so if the
  * replay drifts from the battle; it keeps a copy of the world every 30 s so
  * the seek bar can jump back; the commanders' radio lines go to the ticker
@@ -22,8 +28,14 @@ import { replayPanel, type ReplayPanel } from "../ui/replay";
 import type { GameScene, MatchFeed } from "./GameScene";
 
 declare const __SIM_HASH__: string | undefined;
+declare const __GAME_VERSION__: string | null | undefined;
+declare const __PAGES_SITE__: string | null | undefined;
 /** The sim this build plays (vite.config.ts; tools/arena/files.ts simHash), or null outside a Vite build. */
 export const BUILD_SIM: string | null = typeof __SIM_HASH__ === "undefined" ? null : __SIM_HASH__;
+/** The release this build is ("v10"; tools/arena/files.ts gameVersion), or null: code no release has, or outside a Vite build. */
+export const BUILD_VERSION: string | null = typeof __GAME_VERSION__ === "undefined" ? null : __GAME_VERSION__;
+/** The site this build is part of, with every release at <site><tag>/ (tools/build-pages.mjs), or null: a dev or local build. */
+const PAGES_SITE: string | null = typeof __PAGES_SITE__ === "undefined" ? null : __PAGES_SITE__;
 
 /** A keyframe every 30 s of game time. */
 const KEYFRAME_TICKS = 30 * TICK_RATE;
@@ -145,6 +157,67 @@ export class ReplayFeed implements MatchFeed {
 /** Was this record played by other sim code than this build's? (A replay may then drift: the hash check says so if it does.) */
 export const otherSim = (r: BattleRecord): boolean => !!r.sim && !!BUILD_SIM && r.sim !== BUILD_SIM;
 
+/** A version tag as the site publishes them: one URL segment (tools/build-pages.mjs). */
+const VERSION_TAG = /^v[0-9][A-Za-z0-9.+-]*$/;
+
+export interface BuildInfo {
+  version: string | null;
+  sim: string | null;
+  site: string | null;
+}
+const THIS_BUILD: BuildInfo = { version: BUILD_VERSION, sim: BUILD_SIM, site: PAGES_SITE };
+
+/**
+ * Where a record replays, when that isn't here: its release, and that
+ * release's game on this site. null plays it here: it's this release or
+ * this sim, it names no release (played on code none had: the sim warning
+ * says so if this one differs), or this build isn't on the site that has the
+ * releases (a dev or local build: tools/arena.ts watch finds the right code).
+ */
+export function elsewhere(r: Pick<BattleRecord, "version" | "sim">, build = THIS_BUILD, page?: string): { version: string; url: string } | null {
+  const v = r.version;
+  if (!v || v === build.version || (r.sim && r.sim === build.sim) || !build.site || !VERSION_TAG.test(v)) return null;
+  const here = page ?? location.href;
+  const url = new URL(`${build.site}${v}/`, here).href;
+  // (already there: play it, rather than go round in circles)
+  return url === new URL("./", here).href ? null : { version: v, url };
+}
+
+/** `?replay=` for a record handed over in this tab's sessionStorage (OtherVersion), not linked. */
+export const HANDED_OVER = "session:";
+const HANDOVER_KEY = "battledrones.replay";
+
+/** A battle record from another release of the game (elsewhere): open() watches it there. */
+export class OtherVersion extends Error {
+  constructor(
+    readonly version: string,
+    readonly url: string,
+    private readonly json: string
+  ) {
+    super(`This battle was recorded on Battle Drones ${version}, and ${BUILD_VERSION ? `this is ${BUILD_VERSION}` : "the game has changed since"}. It only replays exactly on its own version.`);
+  }
+
+  /**
+   * Go to its release's game and watch it: by its link, or (pasted, picked,
+   * or itself handed over) handed over in sessionStorage, which the two share
+   * (one site). False if it couldn't be handed over.
+   */
+  open(link: string | null): boolean {
+    if (link && link !== HANDED_OVER) {
+      const abs = new URL(link, location.href).href;
+      location.replace(`${this.url}?replay=${encodeURIComponent(abs).replace(/%2F/gi, "/").replace(/%3A/gi, ":")}`);
+      return true;
+    }
+    try {
+      sessionStorage.setItem(HANDOVER_KEY, this.json);
+    } catch {
+      return false;
+    }
+    location.assign(`${this.url}?replay=${HANDED_OVER}`);
+    return true;
+  }
+}
+
 /** A battle record from its JSON, checked enough to play: throws a message a person can act on. */
 export function parseRecord(text: string): BattleRecord {
   let r: BattleRecord;
@@ -155,6 +228,8 @@ export function parseRecord(text: string): BattleRecord {
   }
   if (!r || typeof r !== "object" || r.v !== 1 || !Array.isArray(r.turns) || !Array.isArray(r.hashes) || !r.seats)
     throw new Error("That isn't a battle record (tools/arena.ts and llm battledrones write them to battles/)");
+  const there = elsewhere(r);
+  if (there) throw new OtherVersion(there.version, there.url, text);
   if (!MAPS.some((m) => m.id === r.map)) throw new Error(`This battle was played on "${r.map}", a map this version of the game doesn't have`);
   if (!r.end && !r.tick) throw new Error("This battle hasn't been played past its first round yet");
   return r;
@@ -222,10 +297,25 @@ async function fetchText(url: string): Promise<string> {
 /**
  * Load `?replay=<record>` (any build: fetchLinkedRecord) into a feed for
  * GameScene. `follow` (dev builds, `&follow`) re-reads a live battle's file
- * every second as it grows.
+ * every second as it grows. `?replay=session:` is a record another release's
+ * game handed over (OtherVersion). A record from another release throws
+ * OtherVersion.
  */
 export async function loadReplay(ref: string, follow: boolean): Promise<ReplayFeed> {
+  if (ref === HANDED_OVER) return new ReplayFeed(parseRecord(handedOver()), null, false);
   if (!follow) return new ReplayFeed(parseRecord(await fetchLinkedRecord(ref)), null, false);
   const url = new URL(ref, location.href).href;
   return new ReplayFeed(await fetchRecord(url), url, true);
+}
+
+/** The record handed over in this tab (kept, so a reload plays it again). */
+function handedOver(): string {
+  let json: string | null = null;
+  try {
+    json = sessionStorage.getItem(HANDOVER_KEY);
+  } catch {
+    /* (no storage: as if nothing was handed over) */
+  }
+  if (!json) throw new Error("This link plays a battle record pasted into the game in another tab or browser: paste it here instead (🎬 Watch a replay)");
+  return json;
 }

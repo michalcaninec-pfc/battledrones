@@ -29,6 +29,8 @@ re-simulated on newer game code, and the models' last orders played on
 (`battles/showcase/README.md`). The game and the viewer both open any battle
 record from its link, `?replay=`. The link can be relative to the site, any URL
 whose server allows cross-origin reads (CORS), a file on GitHub or a Gist.
+A record names the release of the game it was played on, and the game sends
+it there (`/v10/`, say) once newer releases have changed the battle code.
 
 ## Features
 

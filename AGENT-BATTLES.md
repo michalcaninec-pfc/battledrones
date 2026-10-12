@@ -638,6 +638,7 @@ A battle is a JSON file in `battles/`:
 ```jsonc
 {
   "v": 1,
+  "version": "v10",                             // the release that replays it: /battledrones/v10/
   "commit": "cddf6e2…", "sim": "3f9a…",       // the code that played it; sim = hash of src/sim/**
   "map": "riverlands", "mutators": [], "seed": 42, "round": 50,
   "openers": { "blue": "blitz", "red": "airwing" },
@@ -677,6 +678,24 @@ re-simulated battle drifts: a unit that died a moment sooner ignores its last
 order. If no HQ has fallen by the original ending it plays on with the
 standing orders until one does (or the time limit), and the viewer shows the
 ending as played when the new one differs.
+
+**Each release replays its own records.** The site keeps every release of
+the game at `/battledrones/<tag>/` (`tools/build-pages.mjs`), so a record
+names its release too, `version`: the newest version tag behind the code
+that played it, if that tag's `src/sim` is the same (`gameVersion` in
+`tools/arena/files.ts`), or null for sim code no release has yet. Each
+build knows its own release the same way (a tag's build is told its tag).
+When a record names another release, and its sim isn't this build's:
+
+- a link, `/?replay=<record>`, goes straight to that release's game:
+  `/battledrones/v10/?replay=<the same record, as an absolute URL>`;
+- a pasted or picked record says which version it needs, and **▶ Watch it in
+  v10** takes it there, handed over in sessionStorage (`?replay=session:`).
+
+Dev and local builds aren't on the site, so they play it here, with the sim
+warning; `tools/arena.ts watch` finds the right code. A record played before
+its code was tagged gets its release from `upgrade` once the tag exists: it's
+already on that sim, so it isn't re-simulated.
 
 ## Watching
 
@@ -771,7 +790,7 @@ limits.
 | `src/arena/scripted.ts` | Scripted seats (fixed orders per round, for tests) |
 | `tools/arena.ts` | The CLI: `run`, `serve`, `series`, `replay`, `stats`, `watch` |
 | `tools/arena/server.ts` | The loopback seats: HTTP for LLM, MCP for coding agents, control calls for the driver |
-| `tools/arena/files.ts` | Record files, the sim hash, the commit |
+| `tools/arena/files.ts` | Record files, the sim hash, the commit, the release |
 | `tools/arena-viewer-check.mjs` | The Playwright check: a record played in the dev viewer, hash trail checked in Chromium |
 | `llm-tools-battledrones/` | The LLM plugin: the `BattleDrones` toolbox and the `llm battledrones` command (Python), with its tests |
 | `src/game/replay.ts`, `src/ui/replay.ts` | The viewer and its panel: a chunk of its own (10 KB, 4 KB gzipped) that loads only when a replay is chosen |
@@ -896,8 +915,9 @@ Where the build differs from, or adds to, the text above:
   reads (CORS), a file's page on GitHub (read from raw.githubusercontent.com)
   or a Gist (its raw file; the API finds a link without the owner's name).
   The build publishes `battles/showcase/` beside the game for these links,
-  and the game's Menu buttons leave the link behind. Follow mode (`&follow`,
-  live viewing) stays in dev builds.
+  and the game's Menu buttons leave the link behind. A record from another
+  release goes to that release's game (*Battle records*). Follow mode
+  (`&follow`, live viewing) stays in dev builds.
   `tools/arena-viewer-check.mjs --paste --prod` pastes a record into the
   production build and checks the hash trail; `--prod` alone does the same
   for a showcase record opened by its link.

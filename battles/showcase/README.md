@@ -20,6 +20,12 @@ npx vite-node tools/arena.ts stats battles/showcase/*.json --detail
 | `2026-10-11-riverlands-42-gpt-6-luna-vs-gpt-6-astra.json` | GPT-6 Luna (Industry) | GPT-6 Astra (Industry) | red wins at 4:45 | red wins at 7:50 | [replay](https://simonw.github.io/battledrones/?replay=battles/showcase/2026-10-11-riverlands-42-gpt-6-luna-vs-gpt-6-astra.json) · [record](https://simonw.github.io/battledrones/record-viewer.html?replay=battles/showcase/2026-10-11-riverlands-42-gpt-6-luna-vs-gpt-6-astra.json) |
 | `2026-10-11-archipelago-42-gpt-5.6-sol-vs-gpt-6.1-sol.json` | GPT-5.6 Sol (Air Wing) | GPT-6.1 Sol (Air Wing) | red wins at 11:45 | (played on this sim) | [replay](https://simonw.github.io/battledrones/?replay=battles/showcase/2026-10-11-archipelago-42-gpt-5.6-sol-vs-gpt-6.1-sol.json) · [record](https://simonw.github.io/battledrones/record-viewer.html?replay=battles/showcase/2026-10-11-archipelago-42-gpt-5.6-sol-vs-gpt-6.1-sol.json) |
 
+These records were played before records named the release of the game
+that replays them (`version`, AGENT-BATTLES.md "Battle records"). Once the
+release with their sim is tagged, `npx vite-node tools/arena.ts upgrade
+battles/showcase/*.json` adds it: they're already on that sim, so nothing is
+re-simulated. Until then they play on whatever the site's root game is.
+
 The first three were played on the sim before `src/sim/fmath.ts` made it give the same
 results in every browser engine, and brought up to date with
 `npx vite-node tools/arena.ts upgrade battles/showcase/*.json`: the same

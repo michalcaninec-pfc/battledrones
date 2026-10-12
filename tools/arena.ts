@@ -26,7 +26,7 @@ import { TICK_RATE, UNITS } from "../src/sim/balance";
 import { MAPS } from "../src/sim/maps";
 import { isMutatorId, type MutatorId } from "../src/sim/rules";
 import type { Faction } from "../src/sim/types";
-import { ROOT, gitCommit, readRecord, recordPath, simHash, writeRecord } from "./arena/files";
+import { ROOT, gameVersion, gitCommit, readRecord, recordPath, simHash, writeRecord } from "./arena/files";
 import { serveArena } from "./arena/server";
 
 const argv = process.argv.slice(2);
@@ -76,6 +76,12 @@ function matchArgs() {
   return { map, seed, mutators: mutators as MutatorId[], roundTicks, maxTicks, out: arg("out", join(ROOT, "battles"))! };
 }
 
+/** The code playing a battle, for its record: the release that replays it, the commit, the sim hash. */
+function code() {
+  const sim = simHash();
+  return { version: gameVersion(ROOT, sim), commit: gitCommit(), sim };
+}
+
 const who = (r: BattleRecord, f: Faction) => r.seats[f].player;
 const clock = (t: number) => `${Math.floor(t / TICK_RATE / 60)}:${String(Math.floor(t / TICK_RATE) % 60).padStart(2, "0")}`;
 const verdict = (r: BattleRecord) =>
@@ -88,7 +94,7 @@ function playLocal(o: ReturnType<typeof matchArgs>, blue: string, red: string, w
   const arena = new Arena({
     map: o.map, seed: o.seed, mutators: o.mutators, roundTicks: o.roundTicks, maxTicks: o.maxTicks,
     seats: { blue: seats.blue.spec, red: seats.red.spec },
-    commit: gitCommit(), sim: simHash(),
+    ...code(),
     onRound: (a) => {
       if (path && (a.over || a.round % 12 === 0)) writeRecord(path, a.record);
     }
@@ -123,7 +129,7 @@ async function serve() {
   const arena = new Arena({
     map: o.map, seed: o.seed, mutators: o.mutators, roundTicks: o.roundTicks, maxTicks: o.maxTicks,
     seats: { blue: seats.blue.spec, red: seats.red.spec },
-    commit: gitCommit(), sim: simHash()
+    ...code()
   });
   writeRecord(path, arena.record);
   const srv = await serveArena(arena, {
@@ -307,25 +313,30 @@ async function watch() {
  * commands re-simulated, a new hash trail and ending (src/arena/record.ts
  * resimulate), so they replay exactly in this build of the game, the public
  * one included. `--commit` names the commit that holds this sim (default:
- * HEAD); `--force` re-simulates records already on it.
+ * HEAD); `--force` re-simulates records already on it. A record already on
+ * this sim that names no release gets this sim's release, if it has one (a
+ * battle played before its code was tagged).
  */
 function upgrade() {
   const files = positional();
   if (!files.length) die("upgrade <record.json> [...] [--commit <sha>] [--force]");
-  const sim = simHash();
+  const { version, sim } = code();
   const commit = arg("commit") ?? gitCommit();
   const when = (e: BattleEnd | null) => (!e ? "unfinished" : e.winner ? `${e.winner} won at ${clock(e.tick)}` : `${e.reason === "aborted" ? "stopped" : "draw"} at ${clock(e.tick)}`);
   for (const f of files) {
     const r = readRecord(f);
     if (r.sim === sim && !flag("force")) {
-      console.log(`${basename(f)}: already on this sim (${sim})`);
+      if (version && !r.version) {
+        writeRecord(f, { ...r, version });
+        console.log(`${basename(f)}: already on this sim (${sim}); its release: ${version}`);
+      } else console.log(`${basename(f)}: already on this sim (${sim})`);
       continue;
     }
-    const u = resimulate(r, { commit, sim });
+    const u = resimulate(r, { version, commit, sim });
     writeRecord(f, u);
     const moved = (u.end?.tick ?? 0) - (r.end?.tick ?? 0);
     const note = u.end?.winner !== r.end?.winner ? "  (a different ending)" : moved ? `  (${Math.abs(moved / TICK_RATE)} s ${moved > 0 ? "later" : "sooner"})` : "";
-    console.log(`${basename(f)}: sim ${r.sim ?? "?"} → ${sim}; was: ${when(r.end)}; now: ${when(u.end)}${note}`);
+    console.log(`${basename(f)}: sim ${r.sim ?? "?"} → ${sim}${version ? ` (${version})` : ""}; was: ${when(r.end)}; now: ${when(u.end)}${note}`);
   }
 }
 

@@ -1,9 +1,10 @@
 // Battle files on disk: where records go, writing them atomically (the dev
 // viewer's follow mode re-reads the file while a battle plays), and the code
-// that played them (git commit, a hash of src/sim/**).
+// that played them (git commit, a hash of src/sim/**, the release that has that sim).
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BattleRecord } from "../../src/arena/record";
@@ -32,6 +33,33 @@ export function gitCommit(root = ROOT): string | null {
     return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return null;
+  }
+}
+
+/**
+ * The release this code plays as: the newest version tag behind HEAD (v10,
+ * v11…), if its src/sim is the same as this one's, so the game published at
+ * /battledrones/<tag>/ replays what this code records. null: sim code that no
+ * release has yet (or no git, or no tags).
+ */
+export function gameVersion(root = ROOT, sim = simHash(root)): string | null {
+  let tag: string;
+  try {
+    tag = execFileSync("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+  // the tag's src/sim, hashed the same way
+  const dir = mkdtempSync(join(tmpdir(), "battledrones-sim-"));
+  try {
+    const tar = join(dir, "sim.tar");
+    execFileSync("git", ["archive", "--format=tar", "--output", tar, `refs/tags/${tag}`, "src/sim"], { cwd: root, stdio: "ignore" });
+    execFileSync("tar", ["-xf", tar, "-C", dir], { stdio: "ignore" });
+    return simHash(dir) === sim ? tag : null;
+  } catch {
+    return null;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 }
 

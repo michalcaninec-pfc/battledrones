@@ -68,6 +68,8 @@ export interface ArenaOptions {
   roundTicks?: number;
   maxTicks?: number;
   seats: Record<Faction, SeatSpec>;
+  /** The code playing it: its release (tools/arena/files.ts gameVersion), git commit and sim hash. */
+  version?: string | null;
   commit?: string | null;
   sim?: string | null;
   /** Called after every round (and the opener reveal) with the record: the runner rewrites the file. */
@@ -143,6 +145,7 @@ export class Arena {
     });
     this.record = {
       v: 1,
+      version: opts.version ?? null,
       commit: opts.commit ?? null,
       sim: opts.sim ?? null,
       created: new Date().toISOString(),

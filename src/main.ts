@@ -355,7 +355,8 @@ function showMenu(): void {
 /**
  * `/?replay=<record>`, in every build: fetch a battle record by its link
  * (relative to the game, any CORS-enabled URL, a file on GitHub or a Gist) and
- * watch it. Its Menu buttons leave the link behind (ui/fullscreen.ts).
+ * watch it, or go to the release of the game it was recorded on. Its Menu
+ * buttons leave the link behind (ui/fullscreen.ts).
  */
 async function watchLinked(url: string, follow: boolean): Promise<void> {
   const note = document.createElement("div");
@@ -363,7 +364,14 @@ async function watchLinked(url: string, follow: boolean): Promise<void> {
   note.innerHTML = `<div class="loadbox"><p>Fetching the battle record…</p></div>`;
   document.getElementById("hud")!.appendChild(note);
   const feed = await import("./game/replay")
-    .then((m) => m.loadReplay(url, follow))
+    .then((m) =>
+      m.loadReplay(url, follow).catch((e: unknown) => {
+        if (!(e instanceof m.OtherVersion)) throw e;
+        note.querySelector("p")!.textContent = `This battle was recorded on Battle Drones ${e.version}: opening it there…`;
+        if (!e.open(url)) throw e;
+        return null;
+      })
+    )
     .catch((e: unknown) => {
       note.innerHTML = `<div class="panel"><p class="time"></p><button class="cta">Main menu</button></div>`;
       note.querySelector("p")!.textContent = `Couldn't play that battle record. ${e instanceof Error ? e.message : String(e)}`;

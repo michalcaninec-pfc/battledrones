@@ -415,6 +415,128 @@ describe("a battle record linked by URL (?replay=)", () => {
   });
 });
 
+describe("a battle record from another release of the game", () => {
+  const page = "https://simonw.github.io/battledrones/?replay=battles/showcase/a.json";
+  const site = { version: "v11", sim: "s11", site: "/battledrones/" };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("is played by its own release, at <site><tag>/", async () => {
+    const { elsewhere } = await import("../src/game/replay");
+    expect(elsewhere({ version: "v10", sim: "s10" }, site, page)).toEqual({ version: "v10", url: "https://simonw.github.io/battledrones/v10/" });
+    expect(elsewhere({ version: "v12", sim: "s12" }, site, "https://simonw.github.io/battledrones/v11/")).toEqual({ version: "v12", url: "https://simonw.github.io/battledrones/v12/" });
+    // here: this release, this sim, no release named (unreleased code), or a build that isn't on the site (dev, local)
+    expect(elsewhere({ version: "v11", sim: "s10" }, site, page)).toBeNull();
+    expect(elsewhere({ version: "v10", sim: "s11" }, site, page)).toBeNull();
+    expect(elsewhere({ version: null, sim: "s10" }, site, page)).toBeNull();
+    expect(elsewhere({ sim: "s10" }, site, page)).toBeNull();
+    expect(elsewhere({ version: "v10", sim: "s10" }, { ...site, site: null }, page)).toBeNull();
+    // a version tag only: one path segment
+    expect(elsewhere({ version: "../../elsewhere", sim: "s10" }, site, page)).toBeNull();
+    expect(elsewhere({ version: "v10/../..", sim: "s10" }, site, page)).toBeNull();
+    // already there (whatever this build thinks it is): no going round in circles
+    expect(elsewhere({ version: "v10", sim: "s10" }, { ...site, version: null }, "https://simonw.github.io/battledrones/v10/?replay=x")).toBeNull();
+  });
+
+  it("goes there: a link straight away, a pasted record handed over in sessionStorage", async () => {
+    const went: string[] = [];
+    const store = new Map<string, string>();
+    const at = (href: string) =>
+      vi.stubGlobal("location", { href, replace: (u: string) => went.push(`replace ${u}`), assign: (u: string) => went.push(`assign ${u}`) });
+    vi.stubGlobal("sessionStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) });
+    // the latest game, at the site's root (vite.config.ts defines these)
+    vi.stubGlobal("__GAME_VERSION__", "v11");
+    vi.stubGlobal("__SIM_HASH__", "s11");
+    vi.stubGlobal("__PAGES_SITE__", "/battledrones/");
+    at(page);
+    const m = await import("../src/game/replay");
+    const a = new Arena({ map: "frostbite", seed: 2, seats: { blue: parseSeat("ai:rush:easy"), red: parseSeat("ai:boom:easy") }, maxTicks: 600, version: "v10", sim: "s10" });
+    a.advance();
+    const json = JSON.stringify(a.record);
+    expect(a.record.version).toBe("v10");
+
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(json)));
+    const linked = await m.loadReplay("battles/showcase/a.json", false).catch((e: unknown) => e);
+    expect(linked).toBeInstanceOf(m.OtherVersion);
+    const e = linked as InstanceType<typeof m.OtherVersion>;
+    expect(e.message).toBe("This battle was recorded on Battle Drones v10, and this is v11. It only replays exactly on its own version.");
+    expect(e.open("battles/showcase/a.json")).toBe(true);
+    expect(went.pop()).toBe("replace https://simonw.github.io/battledrones/v10/?replay=https://simonw.github.io/battledrones/battles/showcase/a.json");
+
+    let pasted: unknown = null;
+    try {
+      m.replayFromJson(json);
+    } catch (err) {
+      pasted = err;
+    }
+    expect(pasted).toBeInstanceOf(m.OtherVersion);
+    expect((pasted as typeof e).open(null)).toBe(true);
+    expect(went.pop()).toBe("assign https://simonw.github.io/battledrones/v10/?replay=session:");
+
+    // …and v10's game plays it
+    vi.resetModules();
+    vi.stubGlobal("__GAME_VERSION__", "v10");
+    vi.stubGlobal("__SIM_HASH__", "s10");
+    at("https://simonw.github.io/battledrones/v10/?replay=session:");
+    const v10 = await import("../src/game/replay");
+    const feed = await v10.loadReplay(v10.HANDED_OVER, false);
+    expect(feed.record.created).toBe(a.record.created);
+    store.clear();
+    await expect(v10.loadReplay(v10.HANDED_OVER, false)).rejects.toThrow(/paste it here instead/);
+  });
+});
+
+describe("the release a record names (tools/arena/files.ts gameVersion)", () => {
+  // (tools/ and Node's modules are outside the browser-typed tsconfig: loaded untyped)
+  interface Node {
+    execFileSync(cmd: string, args: string[], o: { cwd: string; stdio: string }): unknown;
+    mkdtempSync(prefix: string): string;
+    mkdirSync(dir: string, o: { recursive: true }): void;
+    writeFileSync(file: string, text: string): void;
+    rmSync(dir: string, o: { recursive: true; force: true }): void;
+    tmpdir(): string;
+    gameVersion(root: string): string | null;
+  }
+  const load = async (): Promise<Node> => {
+    const mods = ["node:child_process", "node:fs", "node:os", "../tools/arena/files"];
+    return Object.assign({}, ...(await Promise.all(mods.map((m) => import(/* @vite-ignore */ m))))) as Node;
+  };
+
+  it("is the newest version tag, while the sim is still that tag's", async () => {
+    const n = await load();
+    const dir = n.mkdtempSync(`${n.tmpdir()}/battledrones-version-`);
+    const git = (...args: string[]) =>
+      n.execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", ...args], { cwd: dir, stdio: "ignore" });
+    const write = (file: string, text: string) => n.writeFileSync(`${dir}/${file}`, text);
+    try {
+      n.mkdirSync(`${dir}/src/sim`, { recursive: true });
+      write("src/sim/a.ts", "1");
+      write("README.md", "hello");
+      expect(n.gameVersion(dir)).toBeNull(); // no git
+      git("init", "-q");
+      git("add", ".");
+      git("commit", "-qm", "one");
+      expect(n.gameVersion(dir)).toBeNull(); // no release yet
+      git("tag", "v1");
+      expect(n.gameVersion(dir)).toBe("v1");
+      write("README.md", "changed");
+      git("commit", "-qam", "docs");
+      expect(n.gameVersion(dir)).toBe("v1"); // the sim is still v1's
+      write("src/sim/a.ts", "2");
+      expect(n.gameVersion(dir)).toBeNull(); // a sim no release has (not even committed)
+      git("commit", "-qam", "sim");
+      git("tag", "v2");
+      expect(n.gameVersion(dir)).toBe("v2");
+      write("src/sim/b.ts", "new");
+      expect(n.gameVersion(dir)).toBeNull(); // a new sim file counts too
+    } finally {
+      n.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("upgrading a record to newer sim code", () => {
   const record = (): BattleRecord => {
     const a = new Arena({ map: "proving-grounds", seed: 11, seats: { blue: parseSeat("scripted"), red: parseSeat("ai:rush:easy") }, maxTicks: 8 * 600 });
@@ -428,14 +550,14 @@ describe("upgrading a record to newer sim code", () => {
   it("re-simulates the commands: a new hash trail that replays, the old one kept in the history", () => {
     const r = record();
     // as if older sim code had played it: a different hash trail
-    const old: BattleRecord = { ...r, sim: "0ld", commit: "abc", hashes: r.hashes.map(([t]) => [t, "deadbeef"]) };
+    const old: BattleRecord = { ...r, version: "v10", sim: "0ld", commit: "abc", hashes: r.hashes.map(([t]) => [t, "deadbeef"]) };
     expect(replay(old).divergedAt).toBe(100);
-    const u = resimulate(old, { commit: "def", sim: "n3w" });
+    const u = resimulate(old, { version: "v11", commit: "def", sim: "n3w" });
     expect(u.hashes).toEqual(r.hashes);
     expect(u.end).toEqual(r.end);
     expect(replay(u).divergedAt).toBeNull();
-    expect(u).toMatchObject({ sim: "n3w", commit: "def", turns: r.turns, log: r.log, radio: r.radio });
-    expect(u.upgraded).toEqual([{ from: { commit: "abc", sim: "0ld" }, end: r.end, at: expect.any(String) }]);
+    expect(u).toMatchObject({ version: "v11", sim: "n3w", commit: "def", turns: r.turns, log: r.log, radio: r.radio });
+    expect(u.upgraded).toEqual([{ from: { version: "v10", commit: "abc", sim: "0ld" }, end: r.end, at: expect.any(String) }]);
   });
 
   it("plays on with the standing orders when no HQ has fallen by the old ending", () => {

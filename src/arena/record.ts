@@ -53,6 +53,13 @@ export interface BattleEnd {
 
 export interface BattleRecord {
   v: 1;
+  /**
+   * The release of the game that replays it ("v10"): the version tag whose
+   * src/sim is the one that played it, published at /battledrones/<version>/.
+   * null (or missing, in records from before it was kept): sim code no
+   * release had.
+   */
+  version?: string | null;
   /** The code that played it: git commit, and a hash of src/sim/**. */
   commit: string | null;
   sim: string | null;
@@ -85,7 +92,7 @@ export interface BattleRecord {
 
 /** One re-simulation: the code the record had been played (or last re-simulated) by, and how it ended then. */
 export interface Upgrade {
-  from: { commit: string | null; sim: string | null };
+  from: { version?: string | null; commit: string | null; sim: string | null };
   end: BattleEnd | null;
   at: string;
 }
@@ -210,7 +217,7 @@ export function replay(r: BattleRecord, opts: { until?: number; onTick?: (w: Wor
  * models' notes, orders and radio lines stay as they were played; `upgraded`
  * keeps what the record said before, its ending included.
  */
-export function resimulate(r: BattleRecord, code: { commit: string | null; sim: string | null }): BattleRecord {
+export function resimulate(r: BattleRecord, code: { version?: string | null; commit: string | null; sim: string | null }): BattleRecord {
   const w = setupWorld(r);
   const byTick = new Map<number, Command[]>();
   for (const [tick, , cmds] of r.turns) byTick.set(tick, [...(byTick.get(tick) ?? []), ...cmds]);
@@ -228,11 +235,12 @@ export function resimulate(r: BattleRecord, code: { commit: string | null; sim: 
       : null;
   return {
     ...r,
+    version: code.version ?? null,
     commit: code.commit,
     sim: code.sim,
     hashes,
     tick: w.tick,
     end,
-    upgraded: [...(r.upgraded ?? []), { from: { commit: r.commit, sim: r.sim }, end: r.end, at: new Date().toISOString() }]
+    upgraded: [...(r.upgraded ?? []), { from: { version: r.version ?? null, commit: r.commit, sim: r.sim }, end: r.end, at: new Date().toISOString() }]
   };
 }

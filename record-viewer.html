@@ -635,6 +635,7 @@ function renderHeader() {
   const u = d.usage || {};
   const parts = [];
   if (d.created) parts.push(`<span>created <b>${esc(new Date(d.created).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))}</b></span>`);
+  if (d.version) parts.push(`<span>game <b class="mono">${esc(d.version)}</b></span>`);
   if (d.commit) parts.push(`<span>commit <b class="mono">${esc(String(d.commit).slice(0, 10))}</b></span>`);
   if (d.sim) parts.push(`<span>sim <b class="mono">${esc(d.sim)}</b></span>`);
   parts.push(`<span><b class="mono">${(end ? end.tick : num(d.tick)).toLocaleString()}</b> of ${num(d.maxTicks).toLocaleString()} ticks · <b class="mono">${M.per}</b> per round</span>`);

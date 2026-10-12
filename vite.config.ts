@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { MAP_ART } from "./src/game/map-art";
-import { simHash } from "./tools/arena/files";
+import { gameVersion, simHash } from "./tools/arena/files";
 
 /**
  * Each map's terrain revision: a hash of its painted chunks (art/terrain.py
@@ -44,6 +44,9 @@ function showcaseBattles(): Plugin {
   };
 }
 
+const projectDir = fileURLToPath(new URL(".", import.meta.url));
+const sim = simHash(projectDir);
+
 export default defineConfig({
   // Local builds are portable; Pages supplies an absolute base for each version.
   base: "./",
@@ -51,7 +54,13 @@ export default defineConfig({
   define: {
     __TERRAIN_REVS__: JSON.stringify(terrainRevisions()),
     // the sim this build plays: the battle viewer warns when a record was played by other code
-    __SIM_HASH__: JSON.stringify(simHash(fileURLToPath(new URL(".", import.meta.url))))
+    __SIM_HASH__: JSON.stringify(sim),
+    // The release this build is, and (Pages builds, tools/build-pages.mjs) the
+    // site that has every release at <site><tag>/: a battle record from another
+    // release goes there (src/game/replay.ts). A tag's own source has no git, so
+    // build-pages names its tag; any other build asks git.
+    __GAME_VERSION__: JSON.stringify(process.env.BATTLEDRONES_VERSION || gameVersion(projectDir, sim)),
+    __PAGES_SITE__: JSON.stringify(process.env.BATTLEDRONES_SITE || null)
   },
   build: {
     target: "es2022",
