@@ -146,7 +146,9 @@ built at a new top-of-the-tree building, the **Gantry**.
   `llm-tools-battledrones` plugin don't need to know about Goliaths yet.
 - **Replay compatibility.** Battle records made before the Titan → Mastodon
   rename may stop replaying correctly. Tying replays to tagged versions of
-  the game will be solved separately.
+  the game will be solved separately. (Since solved: a record names its
+  release and opens there, AGENT-BATTLES.md "Battle records". A Titan order
+  in an old record is refused, so its replay says where it diverged.)
 
 ## Naming
 

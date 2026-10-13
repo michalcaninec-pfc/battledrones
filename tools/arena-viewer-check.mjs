@@ -1,6 +1,9 @@
 // Plays a battle record in the battle viewer (AGENT-BATTLES.md "Watching")
 // and checks the hash trail in the browser: the replay must match the battle
-// the arena recorded (Chromium runs the same JavaScript engine as Node).
+// the arena recorded (Chromium runs the same JavaScript engine as Node). A
+// battle that was decided then plays its finale: the after-action report must
+// name the winner (or DRAW, for Robot Love), and a Nomads win must be put
+// down to the loser's last Goliath, there being no HQ.
 // Usage: node tools/arena-viewer-check.mjs battles/<file>.json [--paste] [--prod] [--shot out.png]
 //   --paste  load it the way a player does: menu → "Watch a replay", paste the JSON (else by its link, /?replay=<file>)
 //   --prod   against the production build in dist/ (npm run build first) instead of the dev server
@@ -51,15 +54,23 @@ try {
     await page.waitForTimeout(1500);
     await page.screenshot({ path: shot });
   }
-  const want = record.end?.winner ?? null;
+  // (a Robot Love draw: the world says "draw", the record a null winner with reason "love")
+  const want = record.end?.reason === "love" ? "draw" : record.end?.winner ?? null;
   console.log(`${file}: replayed in the browser to tick ${res.tick} (record: ${end}), winner ${res.winner ?? "none"} (record: ${want ?? "none"})`);
   if (res.divergedAt !== null) {
     console.log(`⚠ diverged at tick ${res.divergedAt}`);
     failed = true;
   } else console.log(`hash trail: ${record.hashes.filter(([t]) => t <= end).length} checks, all match`);
-  // (a Robot Love draw: the world says "draw", the record a null winner with reason "love")
-  const got = res.winner === "draw" ? null : res.winner;
-  if (res.tick !== end || got !== want) failed = true;
+  if (res.tick !== end || (res.winner ?? null) !== want) failed = true;
+  if (want) {
+    // the finale, then the report (GameScene.playFinale: a seek to the end still finds what decided it)
+    const title = await page.waitForSelector("h1.win, h1.lose, h1.draw", { timeout: 90_000 }).then((h) => h.textContent());
+    const cause = await page.evaluate(() => window.__bd.scene.finaleAt?.cause ?? null);
+    const wantTitle = want === "draw" ? "DRAW" : `${want.toUpperCase()} WINS`;
+    const nomads = record.mutators.includes("nomads");
+    console.log(`finale: decided by ${want === "draw" ? "love" : cause ?? "?"}; report: ${title} (want ${wantTitle})`);
+    if (title !== wantTitle || (want !== "draw" && !cause) || (nomads && want !== "draw" && cause !== "goliath")) failed = true;
+  }
   if (errors.length) {
     console.log("page errors:", errors);
     failed = true;

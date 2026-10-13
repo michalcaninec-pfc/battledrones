@@ -16,9 +16,12 @@ here. The AI's own list is longer and lives in `AI-GOLIATH-NOTES.md`.
   match into that standstill; fix the standstill first).
 - **An island relay's own Goliath can't re-pick it** after packing up
   there (`chooseSite` skips the relay on its own island).
-- **Replay seek to the end** now names a Goliath as what decided the match
-  (`GameScene.seek` runs `noteDecider`), but nothing tests it: the scene
-  needs a browser. Worth a check in the replay viewer on a Nomads record.
+- ~~**Replay seek to the end**~~ checked: `tools/arena-viewer-check.mjs`
+  now waits for the finale and the report after seeking to the end, and
+  requires a Nomads win to be put down to the loser's last Goliath (it is,
+  on an AI-vs-AI Nomads record); a Robot Love record ends on DRAW.
+  `tests/arena.test.ts` records and replays Nomads, a Robot Love draw and a
+  two-Condor lift.
 - **Symmetry tests** avoid one Goliath matchup because of a float tie in
   `movement.ts` (waypoint consumption at exactly 0.7 tiles).
 - **The final review stopped early.** All five lenses reported and every

@@ -26,6 +26,11 @@ release with their sim is tagged, `npx vite-node tools/arena.ts upgrade
 battles/showcase/*.json` adds it: they're already on that sim, so nothing is
 re-simulated. Until then they play on whatever the site's root game is.
 
+All four were brought up to the Goliath update's sim (`upgrade --commit
+0248adc`). None of them has a Goliath or a Titan order, and they replay
+exactly the same on it: every hash and every ending matched before the
+upgrade, which only renews their `sim` and `commit`.
+
 The first three were played on the sim before `src/sim/fmath.ts` made it give the same
 results in every browser engine, and brought up to date with
 `npx vite-node tools/arena.ts upgrade battles/showcase/*.json`: the same

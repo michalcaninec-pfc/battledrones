@@ -459,6 +459,9 @@ function inferLandmarks(d, turns, log, frame) {
   });
 }
 
+// Nomads: each side starts with a Goliath instead of a base, so there's no HQ to destroy.
+const nomads = () => Array.isArray(M.d.mutators) && M.d.mutators.includes("nomads");
+
 // A record re-simulated on newer game code (tools/arena.ts upgrade) whose ending moved: how the battle really ended.
 function asPlayed() {
   const u = Array.isArray(M.d.upgraded) && M.d.upgraded[0] && M.d.upgraded[0].end;
@@ -628,9 +631,10 @@ function renderHeader() {
   const res = $("#result");
   res.hidden = false;
   if (end) {
-    const why = { hq: "HQ destroyed", time: "on time", aborted: "aborted" }[end.reason] || end.reason;
+    // (Nomads have no HQ: a side is beaten when its last Goliath falls; Robot Love ends in a draw)
+    const why = { hq: nomads() ? "last Goliath destroyed" : "HQ destroyed", time: "on time", aborted: "aborted", love: "💘 they fell in love" }[end.reason] || end.reason;
     res.className = "result " + (end.winner || "none");
-    res.textContent = end.winner ? `${cap(end.winner)} wins · ${why} · ${fmtT(end.tick)}` : `No winner · ${why} · ${fmtT(end.tick)}`;
+    res.textContent = end.winner ? `${cap(end.winner)} wins · ${why} · ${fmtT(end.tick)}` : `${end.reason === "love" ? "Draw" : "No winner"} · ${why} · ${fmtT(end.tick)}`;
   } else { res.className = "result none"; res.textContent = `In progress · tick ${d.tick ?? "?"}`; }
   const u = d.usage || {};
   const parts = [];
@@ -665,9 +669,9 @@ function renderDetail() {
   let h = `<div class="colhead"><span class="label">Round dispatches</span></div>
   <div class="roundhead"><h2>Round ${r.round}</h2><span class="sub mono">tick ${r.tick}${tEnd > r.tick ? "–" + tEnd : ""} · ${fmtT(r.tick)}</span></div>`;
   if (cur === M.endRound && end) {
-    const why = { hq: "destroyed the enemy HQ", time: "won on time", aborted: "battle aborted" }[end.reason] || end.reason;
+    const why = { hq: nomads() ? "destroyed the enemy's last Goliath" : "destroyed the enemy HQ", time: "won on time", aborted: "battle aborted" }[end.reason] || end.reason;
     const played = asPlayed();
-    h += `<div class="final ${end.winner || "none"}">${end.winner ? cap(end.winner) + " " + esc(why) : "No winner"} at tick ${end.tick} (${fmtT(end.tick)}).${played ? ` As played, ${esc(played.charAt(0).toLowerCase() + played.slice(1))}: this record was re-simulated on newer game code, and its last orders played on.` : ""}</div>`;
+    h += `<div class="final ${end.winner || "none"}">${end.winner ? cap(end.winner) + " " + esc(why) : end.reason === "love" ? "A draw: two Goliaths fell in love" : "No winner"} at tick ${end.tick} (${fmtT(end.tick)}).${played ? ` As played, ${esc(played.charAt(0).toLowerCase() + played.slice(1))}: this record was re-simulated on newer game code, and its last orders played on.` : ""}</div>`;
   }
   SIDES.forEach((s) => {
     const idxs = r.entries[s] || [];

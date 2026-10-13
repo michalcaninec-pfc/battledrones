@@ -650,7 +650,7 @@ A battle is a JSON file in `battles/`:
   "turns": [[0, "blue", [/* Command… */]], …],    // non-empty turns only, true coordinates
   "radio": [[350, "red", "Your harvesters are mine."], …],
   "hashes": [/* a world hash every 100 ticks */],
-  "end": { "tick": 7012, "winner": "blue", "reason": "hq" },
+  "end": { "tick": 7012, "winner": "blue", "reason": "hq" },  // or "time", "aborted", "love" (Robot Love: a draw)
   "usage": { "blue": { "input": 812000, "cached": 690000, "output": 143000 }, "red": { … } }
 }
 ```
@@ -919,8 +919,10 @@ Where the build differs from, or adds to, the text above:
   release goes to that release's game (*Battle records*). Follow mode
   (`&follow`, live viewing) stays in dev builds.
   `tools/arena-viewer-check.mjs --paste --prod` pastes a record into the
-  production build and checks the hash trail; `--prod` alone does the same
-  for a showcase record opened by its link.
+  production build and checks the hash trail, then waits for the finale and
+  the report (DRAW for Robot Love; a Nomads win put down to the last
+  Goliath); `--prod` alone does the same for a showcase record opened by its
+  link.
 - **The record viewer** (`record-viewer.html`, a standalone page in the
   build): a battle record round by round, with no game engine. It has a map
   of where the orders sent things, in true coordinates (it works out which

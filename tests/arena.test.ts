@@ -7,13 +7,13 @@ import { MAPS, createMapWorld } from "../src/sim/maps";
 import { applyOpener, pickAiOpener } from "../src/sim/openers";
 import { step } from "../src/sim/sim";
 import { tickFog } from "../src/sim/fog";
-import type { Faction, World } from "../src/sim/types";
+import type { Command, Faction, World } from "../src/sim/types";
 import { hqOf, spawnUnit } from "../src/sim/world";
 import { frameOf } from "../src/arena/frame";
 import { Arena, parseSeat } from "../src/arena/match";
 import { look, observeState, renderObservation } from "../src/arena/observe";
 import { parseOrders } from "../src/arena/orders";
-import { replay, resimulate, worldHash, type BattleRecord } from "../src/arena/record";
+import { HASH_EVERY, endOf, replay, resimulate, setupWorld, worldHash, type BattleRecord } from "../src/arena/record";
 import { DEFAULT_SCRIPT, playScripted } from "../src/arena/scripted";
 
 const SIDES: Faction[] = ["blue", "red"];
@@ -534,6 +534,97 @@ describe("the release a record names (tools/arena/files.ts gameVersion)", () => 
     } finally {
       n.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("battles with Goliaths record and replay", () => {
+  /** A battle played by raw commands (no AI, no seats): `drive` gives a side's commands each tick. */
+  function commanded(map: string, mutators: string[], openers: BattleRecord["openers"], maxTicks: number, drive: (w: World, side: Faction) => Command[]): BattleRecord {
+    const a = new Arena({ map, seed: 1, mutators: mutators as never, maxTicks, seats: { blue: parseSeat("scripted"), red: parseSeat("scripted") } });
+    const r: BattleRecord = { ...a.record, openers, turns: [], hashes: [] };
+    const w = setupWorld(r);
+    while (!w.winner && w.tick < maxTicks) {
+      const cmds: Command[] = [];
+      for (const side of SIDES) {
+        const c = drive(w, side);
+        if (c.length) r.turns.push([w.tick, side, c]);
+        cmds.push(...c);
+      }
+      step(w, cmds);
+      if (w.tick % HASH_EVERY === 0) r.hashes.push([w.tick, worldHash(w)]);
+    }
+    r.tick = w.tick;
+    r.end = w.winner ? endOf(w.tick, w.winner) : { tick: w.tick, winner: null, reason: "time" };
+    return JSON.parse(JSON.stringify(r)) as BattleRecord;
+  }
+  const goliathOf = (w: World, side: Faction) => [...w.units.values()].find((u) => u.faction === side && u.kind === "goliath")!;
+
+  it("Nomads: the AI's walking bases, played by the arena, replay exactly", () => {
+    const a = new Arena({ map: "dune-sea", seed: 3, mutators: ["nomads"], seats: { blue: parseSeat("ai:balanced:normal"), red: parseSeat("ai:rush:normal") }, maxTicks: 1200 });
+    while (!a.over) a.advance();
+    expect([...a.w.units.values()].some((u) => u.kind === "goliath")).toBe(true);
+    const res = replay(JSON.parse(JSON.stringify(a.record)) as BattleRecord);
+    expect(res.divergedAt).toBeNull();
+    expect(worldHash(res.world)).toBe(worldHash(a.w));
+  });
+
+  it("Robot Love: a draw, ended for love, replays (and re-simulates) to the same draw", () => {
+    const moved = new Set<Faction>();
+    const r = commanded("proving-grounds", ["nomads", "robotlove"], {}, 3000, (w, side) => {
+      const g = goliathOf(w, side);
+      if (w.tick === 0) return [{ type: "packUp", faction: side, unitIds: [g.id] }];
+      if (moved.has(side) || g.goliath!.mode !== "walking") return [];
+      moved.add(side);
+      return [{ type: "move", faction: side, unitIds: [g.id], x: w.width / 2, y: w.height / 2 }];
+    });
+    expect(r.end).toMatchObject({ winner: null, reason: "love" });
+    const res = replay(r);
+    expect(res.divergedAt).toBeNull();
+    expect(res.world.winner).toBe("draw");
+    expect(res.world.tick).toBe(r.end!.tick);
+    expect(resimulate(r, { commit: null, sim: "n3w" }).end).toEqual(r.end);
+  });
+
+  it("a Goliath lifted by two Condors, flown and set down, replays exactly", () => {
+    let phase = "build";
+    const condors = (w: World) => [...w.units.values()].filter((u) => u.faction === "blue" && u.kind === "condor").map((u) => u.id);
+    const r = commanded("riverlands", ["nomads"], { blue: "airwing", red: "industry" }, 1200, (w, side) => {
+      if (side !== "blue") return [];
+      const g = goliathOf(w, "blue");
+      const lift = g.goliath!.lift;
+      if (phase === "build") {
+        phase = "wait";
+        const pad = [...w.buildings.values()].find((b) => b.faction === "blue" && b.kind === "airpad")!;
+        return [
+          { type: "produce", faction: "blue", buildingId: pad.id, unit: "condor" },
+          { type: "produce", faction: "blue", buildingId: pad.id, unit: "condor" },
+          { type: "packUp", faction: "blue", unitIds: [g.id] }
+        ];
+      }
+      if (phase === "wait" && condors(w).length >= 2 && g.goliath!.mode === "walking") {
+        phase = "hook";
+        return [{ type: "lift", faction: "blue", unitIds: condors(w).slice(0, 2), goliathId: g.id }];
+      }
+      if (phase === "hook" && lift?.phase === "carrying") {
+        phase = "fly";
+        return [{ type: "unload", faction: "blue", unitIds: lift.carriers, x: g.x + 8, y: g.y - 8 }];
+      }
+      return [];
+    });
+    expect(r.turns.flatMap((t) => t[2]).map((c) => c.type)).toEqual(["produce", "produce", "packUp", "lift", "unload"]);
+    let carried = 0;
+    let landed = false;
+    const res = replay(r, {
+      onTick: (w) => {
+        const g = goliathOf(w, "blue");
+        if (g.goliath!.lift?.phase === "carrying") carried++;
+        else if (carried) landed = true;
+      }
+    });
+    expect(res.divergedAt).toBeNull();
+    expect(res.checked).toBe(r.hashes.length);
+    expect(carried).toBeGreaterThan(0);
+    expect(landed).toBe(true);
   });
 });
 
