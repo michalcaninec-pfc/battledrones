@@ -52,8 +52,8 @@ export const DAILY_MAPS = ["riverlands", "dune-sea", "frostbite", "ashlands", "p
 /**
  * The mutators a Daily Op draws its pair from, frozen like DAILY_MAPS: the
  * pair is a hash of the date into this list, so adding a mutator to the game
- * must not change any day's op. (Nomads and Robot Love came later, and stay
- * out: they are menu picks.)
+ * must not change any day's op. (Nomads, Robot Love and Goliath Armada came
+ * later, and stay out: they are menu picks.)
  */
 export const DAILY_MUTATORS: readonly MutatorId[] = [
   "blitz", "goldrush", "glass", "rapidfab", "airwar", "infantrywar", "airborne", "veterans", "clearskies"

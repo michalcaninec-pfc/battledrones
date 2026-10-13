@@ -2,9 +2,10 @@ import { GOLIATH, TERRAIN, TICK_RATE, UNITS } from "./balance";
 import { strikeDamage } from "./combat";
 import { isTransport } from "./infantry";
 import { isStunned } from "./powers";
+import { applySpawnRank } from "./rules";
 import { wreckRestingSpot } from "./salvage";
 import type { Command, Unit, World } from "./types";
-import { inBounds, passable, sideFrame, terrainAt } from "./world";
+import { buildingCenter, hqOf, inBounds, passable, removeBuilding, sideFrame, spawnUnit, terrainAt } from "./world";
 import { atan2, cos, hypot, sin } from "./fmath";
 
 /**
@@ -309,5 +310,53 @@ export function dropLifts(w: World): void {
     g.path = null;
     g.pathGoal = null;
     w.fx.push({ type: "goliathLift", faction: g.faction, id: g.id, carrierIds: ids, state: "dropped", x: g.x, y: g.y, destroyed: !lands || g.hp <= 0 });
+  }
+}
+
+// ------------------------------------------------------------ mutators ---
+
+/** Goliath Armada: where each side's Goliaths start, as steps of GOLIATH.armada.gap from the HQ's centre (in the side's own frame). */
+const ARMADA: readonly (readonly [number, number])[] = [
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+  [1, 1]
+];
+
+/**
+ * Goliath Armada (createMapWorld, skirmish): each side's start is cleared
+ * (HQ, Harvester, Trooper Squad) and four Goliaths take its place in the air,
+ * on the corners of a square round where the HQ stood, facing the map
+ * centre, each already carried by two Condors. Placed in the side's own
+ * frame, so red's armada is blue's mirror image. With no HQ, a side is
+ * beaten when its last Goliath falls.
+ */
+export function armadaStart(w: World): void {
+  const centre = { x: w.width / 2, y: w.height / 2 };
+  const edge = GOLIATH.lift.span + 1; // (a Condor's hook point stays over the map)
+  for (const f of ["blue", "red"] as const) {
+    const hq = hqOf(w, f);
+    if (!hq) continue;
+    const fr = sideFrame(w, f);
+    const home = fr.pt(buildingCenter(hq));
+    for (const b of [...w.buildings.values()]) if (b.faction === f) removeBuilding(w, b);
+    for (const u of [...w.units.values()]) if (u.faction === f) w.units.delete(u.id);
+    for (const [dx, dy] of ARMADA) {
+      const at = fr.pt({
+        x: Math.min(w.width - edge, Math.max(edge, home.x + dx * GOLIATH.armada.gap)),
+        y: Math.min(w.height - edge, Math.max(edge, home.y + dy * GOLIATH.armada.gap))
+      });
+      const g = spawnUnit(w, "goliath", f, at.x, at.y);
+      face(g, centre.x, centre.y);
+      applySpawnRank(w, g); // (Veterans: rank 1, like every combat unit)
+      const carriers = [0, 1].map((i) => {
+        const p = hookPoint(g.x, g.y, g.facing, i);
+        const c = spawnUnit(w, "condor", f, p.x, p.y);
+        c.facing = g.facing;
+        c.order = { type: "lift", goliathId: g.id };
+        return c.id;
+      });
+      g.goliath!.lift = { carriers: carriers as [number, number], phase: "carrying", dest: null, setDown: false };
+    }
   }
 }

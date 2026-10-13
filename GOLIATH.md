@@ -125,7 +125,17 @@ and why:
   nor a loss, with its own XP (scaled down for a short match, as a loss
   is, so a quick meeting can't be farmed). Battle records end with no winner and the
   reason `"love"`.
-- Both conflict with Air War and Infantry War, which ban the Goliath, and
+- **Goliath Armada** 🚁 ("Each side starts with four Goliaths in the air,
+  two Condors carrying each, and nothing else"): in a skirmish each side's
+  start (HQ, Harvester and Trooper Squad) is cleared, and four Goliaths
+  hang on the corners of a square round where the HQ stood
+  (`GOLIATH.armada.gap` either way of its centre), facing the map centre,
+  each already on a two-Condor lift (`lift.ts armadaStart`). No opener is
+  dealt (every card reads "Disabled: Goliath Armada"). As under Nomads
+  there is no HQ: anchored Goliaths also build Harvesters, every building
+  is an outpost, and a side is beaten when its last Goliath falls. It
+  also conflicts with Nomads and Airborne (each starts a side another way).
+- All three conflict with Air War and Infantry War, which ban the Goliath, and
   the Daily Op draws its mutators from a frozen list that leaves them out.
 
 ## The spec as written

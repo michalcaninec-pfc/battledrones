@@ -9,6 +9,7 @@ import { setupOp } from "./ops";
 import { dropPoint, stowAboard } from "./transport";
 import { setupLifeline } from "./lifeline";
 import { nomadStart } from "./goliath";
+import { armadaStart } from "./lift";
 import { hypot } from "./fmath";
 
 /**
@@ -537,12 +538,16 @@ export function createMapWorld(id: string, opts: MatchOptions = {}): World {
     w.rules!.homeTiles = { blue: tile(hx, hy), red: tile(rx, ry) };
   }
   if (skirmish && rulesOf(w).nomads) nomadStart(w); // (the HQs become anchored Goliaths)
-  for (const u of squads) applySpawnRank(w, u); // (Veterans: it rolls out ranked like every combat unit)
+  // Goliath Armada: nothing but four Goliaths in the air, each under two Condors (no squad, no opener)
+  const armada = skirmish && !!rulesOf(w).armada;
+  if (armada) armadaStart(w);
+  const starters = armada ? [] : squads;
+  for (const u of starters) applySpawnRank(w, u); // (Veterans: it rolls out ranked like every combat unit)
   // Airborne: a Condor and the other two squads, parked round the starting one
   // (the island map's Condor too)
   const extra = rulesOf(w).startUnits;
   if (extra.length)
-    for (const u of squads) {
+    for (const u of starters) {
       const ids = spawnStartUnits(w, u.faction, extra, u);
       const condor = ids.map((id) => w.units.get(id)!).find((c) => c.kind === "condor");
       if (condor && skirmish && def.startUnits?.includes("condor")) {
@@ -555,7 +560,7 @@ export function createMapWorld(id: string, opts: MatchOptions = {}): World {
   if (skirmish) {
     for (const f of ["blue", "red"] as const) {
       const o = opts.openers?.[f];
-      if (o) applyOpener(w, f, o);
+      if (o && !armada) applyOpener(w, f, o);
     }
     if (opts.objectives) setupObjectives(w, def.uplinks, def.dropSites);
   }
@@ -569,7 +574,8 @@ function applyMapRules(w: World, def: MapDef): void {
   if (!def.startUnits?.length && def.hqTrickle === undefined && !def.lifeline && !def.islands) return;
   const r = w.rules ? { ...w.rules } : makeRules([]);
   w.rules = r;
-  const extra = (def.startUnits ?? []).filter((k) => !bannedBy(w, k));
+  // (Goliath Armada: the Goliaths' Condors are all a side starts with)
+  const extra = r.armada ? [] : (def.startUnits ?? []).filter((k) => !bannedBy(w, k));
   r.startUnits = [...r.startUnits, ...extra.filter((k) => !r.startUnits.includes(k))];
   if (def.hqTrickle !== undefined) r.hqTrickle = def.hqTrickle;
   if (def.lifeline && !bannedBy(w, "condor")) r.lifeline = true;

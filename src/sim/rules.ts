@@ -22,7 +22,8 @@ export type MutatorId =
   | "veterans"
   | "clearskies"
   | "nomads"
-  | "robotlove";
+  | "robotlove"
+  | "armada";
 
 export interface Rules {
   /** Scrap each side starts with. */
@@ -74,6 +75,13 @@ export interface Rules {
   nomads?: boolean;
   /** Robot Love: two enemy Goliaths within GOLIATH.love.range fall in love and the match is a draw (goliath.ts tickLove). */
   robotLove?: boolean;
+  /**
+   * Goliath Armada: each side starts with GOLIATH.armada.count Goliaths in
+   * the air, each carried by two Condors, and nothing else: no HQ, no
+   * Harvester, no squad, no opener (goliath.ts armadaStart). As under Nomads,
+   * anchored Goliaths also build Harvesters and every building is an outpost.
+   */
+  armada?: boolean;
   /**
    * Island maps: the tile at the centre of each side's starting HQ, so home
    * land is still known once the HQ has fallen (or, under Nomads, was never
@@ -171,8 +179,8 @@ export const MUTATORS: Record<MutatorId, MutatorDef> = {
     // so no Condor either: NO_GROUND_COMBAT)
     desc: "No ground combat units, Condors, Fab Plants, Assembly Bays or SAM sites: dogfights decide it",
     bansUnits: NO_GROUND_COMBAT,
-    // (and no Goliath, which Nomads and Robot Love are about)
-    conflicts: ["infantrywar", "airborne", "nomads", "robotlove"],
+    // (and no Goliath, which Nomads, Robot Love and Goliath Armada are about)
+    conflicts: ["infantrywar", "airborne", "nomads", "robotlove", "armada"],
     bansBuildings: ["fab-plant", "assembly-bay", "sam-site"],
     apply: (r) => {
       r.bannedUnits.push(...NO_GROUND_COMBAT);
@@ -188,7 +196,7 @@ export const MUTATORS: Record<MutatorId, MutatorDef> = {
     desc: "Robot infantry only: no combat vehicles, combat aircraft or Fab Plants",
     bansUnits: NO_VEHICLES,
     bansBuildings: ["fab-plant"],
-    conflicts: ["airwar", "nomads", "robotlove"],
+    conflicts: ["airwar", "nomads", "robotlove", "armada"],
     apply: (r) => {
       r.bannedUnits.push(...NO_VEHICLES);
       r.bannedBuildings.push("fab-plant");
@@ -200,7 +208,8 @@ export const MUTATORS: Record<MutatorId, MutatorDef> = {
     icon: "🪂",
     // the classic start already has the Trooper Squad: this adds the other two and a ride
     desc: "Both sides start with a Condor dropship and one of each infantry squad",
-    conflicts: ["airwar"],
+    // (Goliath Armada starts with nothing but its Goliaths and their Condors)
+    conflicts: ["airwar", "armada"],
     apply: (r) => {
       for (const k of ["condor", "rocket-squad", "sniper"] as const) if (!r.startUnits.includes(k)) r.startUnits.push(k);
     }
@@ -225,7 +234,7 @@ export const MUTATORS: Record<MutatorId, MutatorDef> = {
     icon: "🦿",
     // the base walks: anchored, it takes scrap, builds Harvesters and squads, and buildings go up round it
     desc: "Each side starts with a Goliath instead of a base",
-    conflicts: ["airwar", "infantrywar"],
+    conflicts: ["airwar", "infantrywar", "armada"],
     apply: (r) => (r.nomads = true)
   },
   robotlove: {
@@ -235,6 +244,16 @@ export const MUTATORS: Record<MutatorId, MutatorDef> = {
     desc: "Two enemy Goliaths that meet fall in love, and the battle ends in a draw",
     conflicts: ["airwar", "infantrywar"],
     apply: (r) => (r.robotLove = true)
+  },
+  armada: {
+    id: "armada",
+    name: "Goliath Armada",
+    icon: "🚁",
+    // no base at all: anchored, the Goliaths build Harvesters and squads, and buildings go up round them
+    desc: "Each side starts with four Goliaths in the air, two Condors carrying each, and nothing else",
+    // (Air War and Infantry War ban the Goliath; Nomads and Airborne start a side some other way)
+    conflicts: ["airwar", "infantrywar", "airborne", "nomads"],
+    apply: (r) => (r.armada = true)
   }
 };
 
@@ -281,6 +300,9 @@ export function applyMutators(w: World, ids: readonly MutatorId[]): void {
 }
 
 export const rulesOf = (w: World): Readonly<Rules> => w.rules ?? DEFAULT_RULES;
+
+/** Nomads and Goliath Armada: no HQ is ever built, and a side's Goliaths are its base. */
+export const goliathBase = (w: World): boolean => !!(rulesOf(w).nomads || rulesOf(w).armada);
 
 /** True when any mutator is active (career: no map stars). */
 export const isMutated = (w: World): boolean => rulesOf(w).mutators.length > 0;

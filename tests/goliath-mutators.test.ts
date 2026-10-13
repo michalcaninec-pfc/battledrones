@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { DAILY_MUTATORS, dailyOp } from "../src/game/daily";
-import { GOLIATH, TICK_RATE, UNITS } from "../src/sim/balance";
+import { ECONOMY, GOLIATH, TICK_RATE, UNITS } from "../src/sim/balance";
 import { canPlaceBuilding, producersOf, unitBlocker } from "../src/sim/economy";
-import { goliathsOf } from "../src/sim/goliath";
+import { goliathsOf, isLifted } from "../src/sim/goliath";
 import { createMapWorld } from "../src/sim/maps";
+import { OPENER_IDS, allowedOpener, openerBlocked } from "../src/sim/openers";
 import { powerBlocker } from "../src/sim/powers";
 import { MUTATORS, MUTATOR_IDS, makeRules, mutatorsCompatible, toggleMutator } from "../src/sim/rules";
 import { step } from "../src/sim/sim";
 import type { Command, World } from "../src/sim/types";
-import { createWorld, hqOf, spawnBuilding, spawnUnit } from "../src/sim/world";
+import { createWorld, domainOf, hqOf, spawnBuilding, spawnUnit } from "../src/sim/world";
 
 /** Step `n` ticks, `cmds` on the first. */
 function run(w: World, n: number, cmds: Command[] = []): void {
@@ -164,6 +165,75 @@ describe("Robot Love", () => {
   });
 });
 
+describe("Goliath Armada", () => {
+  it("starts each side with four Goliaths in the air, two Condors carrying each, and nothing else, mirror-placed", () => {
+    const w = createMapWorld("riverlands", { mutators: ["armada"] });
+    expect(w.buildings.size).toBe(0);
+    for (const f of ["blue", "red"] as const) {
+      const units = [...w.units.values()].filter((u) => u.faction === f);
+      expect(units.filter((u) => u.kind === "goliath")).toHaveLength(4);
+      expect(units.filter((u) => u.kind === "condor")).toHaveLength(8);
+      expect(units).toHaveLength(12);
+      const carriers = new Set<number>();
+      for (const g of goliathsOf(w, f)) {
+        expect(isLifted(g)).toBe(true);
+        expect(domainOf(g)).toBe("air");
+        for (const id of g.goliath!.lift!.carriers) {
+          const c = w.units.get(id)!;
+          expect(c.faction).toBe(f);
+          expect(c.order).toEqual({ type: "lift", goliathId: g.id });
+          carriers.add(id);
+        }
+      }
+      expect(carriers.size).toBe(8);
+      expect(w.factions[f].scrap).toBe(ECONOMY.startingScrap);
+    }
+    const blue = goliathsOf(w, "blue");
+    const red = goliathsOf(w, "red");
+    blue.forEach((b, i) => {
+      expect(b.x + red[i]!.x).toBeCloseTo(w.width, 9);
+      expect(b.y + red[i]!.y).toBeCloseTo(w.height, 9);
+    });
+  });
+
+  it("deals no opener: every card says why", () => {
+    const w = createMapWorld("riverlands", { mutators: ["armada"], openers: { blue: "blitz", red: "industry" } });
+    expect(w.buildings.size).toBe(0);
+    for (const id of OPENER_IDS) expect(openerBlocked(w, "blue", id)).toBe("Disabled: Goliath Armada");
+    expect(allowedOpener(w, "red", "blitz")).toBeNull();
+  });
+
+  it("flies, sets down and anchors like any lift, and an anchored Goliath builds Harvesters", () => {
+    const w = createMapWorld("riverlands", { mutators: ["armada"] });
+    const g = goliathsOf(w, "blue")[0]!;
+    run(w, 1, [{ type: "unload", faction: "blue", unitIds: [g.id] }]);
+    run(w, 10 * TICK_RATE);
+    expect(g.goliath!.lift).toBeNull();
+    expect(g.goliath!.mode).toBe("walking");
+    run(w, 1, [{ type: "anchor", faction: "blue", unitIds: [g.id] }]);
+    run(w, (GOLIATH.anchorTime + 1) * TICK_RATE);
+    expect(g.goliath!.mode).toBe("anchored");
+    expect(unitBlocker(w, "blue", "harvester")).toBeNull();
+    expect(producersOf(w, "blue", "harvester").map((p) => p.id)).toEqual([g.id]);
+  });
+
+  it("is lost when the side's last Goliath falls", () => {
+    const w = createMapWorld("riverlands", { mutators: ["armada"] });
+    const [last, ...rest] = goliathsOf(w, "red");
+    for (const g of rest) g.hp = 0;
+    run(w, 1);
+    expect(w.winner).toBeNull();
+    last!.hp = 0;
+    run(w, 1);
+    expect(w.winner).toBe("blue");
+  });
+
+  it("stays out of Last Stand (skirmish rules only)", () => {
+    const w = createMapWorld("riverlands", { mutators: ["armada"], survival: {} });
+    expect(hqOf(w, "blue")).not.toBeNull();
+  });
+});
+
 describe("the mutator list", () => {
   it("keeps Nomads and Robot Love away from the mutators that ban the Goliath, both ways round", () => {
     for (const m of ["nomads", "robotlove"] as const)
@@ -173,7 +243,14 @@ describe("the mutator list", () => {
         expect(toggleMutator([ban], m)).toEqual([m]);
       }
     expect(mutatorsCompatible(["nomads", "robotlove"])).toBe(true);
-    for (const id of ["nomads", "robotlove"] as const) {
+    // Goliath Armada: no Goliath-banning mutator, and no other start (Nomads, Airborne's squads) either
+    for (const other of ["airwar", "infantrywar", "nomads", "airborne"] as const) {
+      expect(mutatorsCompatible(["armada", other])).toBe(false);
+      expect(makeRules(["armada", other]).mutators).toEqual([other]);
+      expect(toggleMutator([other], "armada")).toEqual(["armada"]);
+    }
+    expect(mutatorsCompatible(["armada", "robotlove", "veterans"])).toBe(true);
+    for (const id of ["nomads", "robotlove", "armada"] as const) {
       expect(MUTATORS[id].name.length).toBeGreaterThan(0);
       expect(MUTATOR_IDS).toContain(id);
     }
@@ -182,6 +259,7 @@ describe("the mutator list", () => {
   it("leaves the Daily Op's draws as they were (new mutators are menu picks)", () => {
     expect(DAILY_MUTATORS).not.toContain("nomads");
     expect(DAILY_MUTATORS).not.toContain("robotlove");
+    expect(DAILY_MUTATORS).not.toContain("armada");
     for (let day = 20300; day < 20400; day++)
       for (const m of dailyOp(day).mutators) expect(DAILY_MUTATORS).toContain(m);
   });

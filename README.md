@@ -127,12 +127,13 @@ whose server allows cross-origin reads (CORS), a file on GitHub or a Gist.
   Orbital, Scavenger, Steady Hands…) popping in on the end
   screen, three stars per map and difficulty, and a **Daily Op** — one seeded
   match a day, the same for everyone, with a win streak.
-- **Eleven mutators** to twist a skirmish for both sides: Blitz, Gold Rush,
+- **Twelve mutators** to twist a skirmish for both sides: Blitz, Gold Rush,
   Glass Cannons, Rapid Fab, Air War, Infantry War (robot infantry only),
   Airborne (start with a Condor and one of each squad), Veterans, Clear
   Skies, Nomads 🦿 (each side starts with an anchored Goliath instead of a
-  base) and Robot Love 💘 (two enemy Goliaths that meet fall in love, and
-  the battle ends in a draw).
+  base), Robot Love 💘 (two enemy Goliaths that meet fall in love, and
+  the battle ends in a draw) and Goliath Armada 🚁 (each side starts with
+  nothing but four Goliaths in the air, two Condors carrying each).
 - **Ops**: a campaign of eight short missions with a twist and three stars
   each — hold the Riverlands bridge against a Rush, deliver 10,000 scrap under
   Air Swarm raids, decapitate a base with a fixed strike group, win on a

@@ -18,7 +18,7 @@ import { isInfantry } from "../infantry";
 import { canCarry } from "../lift";
 import { findPath } from "../movement";
 import { blocksObjective, uplinkPay } from "../objectives";
-import { bannedBy, rulesOf } from "../rules";
+import { bannedBy, goliathBase, rulesOf } from "../rules";
 import { isLoaded } from "../transport";
 import { Terrain, type Building, type BuildingKind, type Command, type Faction, type QueueItem, type Unit, type UnitKind, type World } from "../types";
 import {
@@ -1168,7 +1168,7 @@ function loveMood(w: World, ctx: GoliathContext, ours: readonly Unit[]): "shy" |
   if (!rulesOf(w).robotLove || !ctx.seen.some((e) => !!e.goliath)) return null;
   const mine = value(ctx.army) + ours.reduce((v, g) => v + threatValue(g), 0);
   const theirs = ctx.seen.reduce((v, e) => v + (UNITS[e.kind].dps > 0 || e.goliath ? threatValue(e) : 0), 0);
-  const losing = mine < GOLIATH_AI.loveLosing * theirs && (ctx.threatened || (!ctx.hasHq && !rulesOf(w).nomads));
+  const losing = mine < GOLIATH_AI.loveLosing * theirs && (ctx.threatened || (!ctx.hasHq && !goliathBase(w)));
   return losing ? "court" : "shy";
 }
 
@@ -1680,6 +1680,12 @@ function nearestLand(w: World, faction: Faction, p: P): P | null {
 function liftStep(w: World, faction: Faction, s: AiState, g: Unit, plan: Plan, ctx: GoliathContext, m: Memo, cmds: Command[]): void {
   const gs = g.goliath!;
   const lift = gs.lift;
+  // carried with nowhere to go yet (a Goliath Armada start): a site first, flown to, rather
+  // than down where it hangs (each picks clear of the sites the others took)
+  if (lift?.phase === "carrying" && !plan.site && !plan.landing && !lift.setDown) {
+    plan.site = chooseSite(w, faction, s, g, ctx, m);
+    if (plan.site) setPhase(w, plan, "lift");
+  }
   const site = plan.site;
   const release = () => {
     plan.carriers = [];

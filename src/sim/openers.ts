@@ -2,7 +2,7 @@ import { BUILDINGS, UNITS } from "./balance";
 import { canPlaceBuilding, inBaseRange } from "./economy";
 import { anchoredGoliaths } from "./goliath";
 import { hash32, saltOf } from "./rand";
-import { applySpawnRank, bannedBy } from "./rules";
+import { MUTATORS, applySpawnRank, bannedBy, rulesOf } from "./rules";
 import { Terrain, type BuildingKind, type Faction, type UnitKind, type World } from "./types";
 import {
   buildingCenter,
@@ -122,6 +122,7 @@ export function pickAiOpener(strategy: StrategyName, seed: number, faction: Fact
 
 /** Why this side can't take this opener under the match rules (a banned factory or crew), or null. */
 export function openerBlocked(w: World, faction: Faction, id: OpenerId): string | null {
+  if (rulesOf(w).armada) return `Disabled: ${MUTATORS.armada.name}`; // (a side starts with its Goliaths and nothing else)
   const o = OPENERS[id];
   for (const kind of [o.building, ...o.units]) {
     const why = bannedBy(w, kind, faction);

@@ -1,7 +1,7 @@
 import { BUILDINGS, GOLIATH, TERRAIN, TICK_RATE, UNITS } from "./balance";
 import { blocksObjective } from "./objectives";
 import { isStunned } from "./powers";
-import { applySpawnRank, rulesOf } from "./rules";
+import { applySpawnRank, goliathBase, rulesOf } from "./rules";
 import type { Command, Faction, GoliathMode, GoliathWeapon, Unit, UnitKind, World } from "./types";
 import { buildingCenter, hqOf, inBounds, removeBuilding, sideFrame, spawnUnit, terrainAt } from "./world";
 import { hypot } from "./fmath";
@@ -320,8 +320,8 @@ export function goliathTrainer(w: World, id: number, faction: Faction): Unit | n
 /** Can an anchored Goliath train this kind? (Robot infantry: what an Assembly Bay builds.) */
 export const trainable = (kind: UnitKind): boolean => UNITS[kind].builtAt === "assembly-bay";
 
-/** Can an anchored Goliath build this kind in this match? Robot infantry, and under Nomads Harvesters too (no HQ to build them). */
-export const trainableAt = (w: World, kind: UnitKind): boolean => trainable(kind) || (kind === "harvester" && !!rulesOf(w).nomads);
+/** Can an anchored Goliath build this kind in this match? Robot infantry, and under Nomads or Goliath Armada Harvesters too (no HQ to build them). */
+export const trainableAt = (w: World, kind: UnitKind): boolean => trainable(kind) || (kind === "harvester" && goliathBase(w));
 
 // ------------------------------------------------------------ mutators ---
 

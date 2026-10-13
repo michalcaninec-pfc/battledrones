@@ -609,5 +609,7 @@ export const GOLIATH = {
   /** Seconds a scrap pile lies before it burns out (longer than a wreck: holding the ground pays). */
   pileTtl: 90,
   /** Robot Love mutator: enemy Goliaths this close (tiles, centre to centre) fall in love, and the match is a draw. */
-  love: { range: 5 }
+  love: { range: 5 },
+  /** Goliath Armada mutator: the four starting Goliaths hang this far (tiles) either way of the HQ's centre, on each axis (lift.ts armadaStart). */
+  armada: { gap: 2.2 }
 };

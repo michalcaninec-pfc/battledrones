@@ -2100,10 +2100,27 @@ Reasons to come back between matches. Spectated games never count.
     **DRAW** in the report, has its own sting and radio line, is neither a
     win nor a loss in the career (see *Career*), and ends a battle record
     (`AGENT-BATTLES.md`) with `{ winner: null, reason: "love" }`.
+  - 🚁 **Goliath Armada** ("Each side starts with four Goliaths in the air,
+    two Condors carrying each, and nothing else"; `Rules.armada`,
+    `lift.ts armadaStart`): in a skirmish each side's HQ, Harvester and
+    Trooper Squad are cleared, and four Goliaths hang on the corners of a
+    square round where the HQ stood (`GOLIATH.armada.gap` either way of
+    its centre, in the side's own frame: mirror-fair), facing the map
+    centre, each already carried by two Condors (`GoliathLift` phase
+    `"carrying"`). No map start units, and no opener (`openerBlocked`:
+    "Disabled: Goliath Armada", so the player starts at once). As under
+    Nomads (`goliathBase`), anchored Goliaths also build Harvesters, every
+    building is an outpost and a side is beaten when its last Goliath
+    falls. The AI (`ai/goliath.ts liftStep`: a carried Goliath with no
+    site picks one before setting down) flies each to its own dig-in
+    site, clear of the sites the others took, and sets it down there;
+    with none worth it, it comes down where it hangs.
 
   Air War conflicts with both infantry mutators (it bans their units), and
-  Air War and Infantry War each conflict with Nomads and Robot Love (they
-  ban the Goliath): the picker switches the other off (`toggleMutator`),
+  Air War and Infantry War each conflict with Nomads, Robot Love and
+  Goliath Armada (they ban the Goliath; Armada also conflicts with Nomads
+  and Airborne, which start a side another way): the picker switches the
+  other off (`toggleMutator`),
   and `makeRules` keeps the first of a conflicting pair. Skirmish only;
   both sides obey them
   (`unitBlocker`/`buildingBlocker` say "Disabled: Air War", the HUD shows
@@ -2127,8 +2144,8 @@ Reasons to come back between matches. Spectated games never count.
   personality, Normal or Hard, two compatible mutators and the match seed —
   the same match for everyone. The mutators come from a frozen list of the
   nine older ones (`DAILY_MUTATORS`, like the frozen map list), so adding
-  a mutator never changes a day's op; Nomads and Robot Love stay menu
-  picks. Its own rematch, +100 XP for the first win of
+  a mutator never changes a day's op; Nomads, Robot Love and Goliath
+  Armada stay menu picks. Its own rematch, +100 XP for the first win of
   the day, and a win streak that survives until a whole day passes without
   a win. No stars (it is always mutated).
 - AI-vs-AI sanity (50 matches each, 25:00 cap): classic 48/50 decisive,

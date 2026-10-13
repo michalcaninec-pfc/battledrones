@@ -4,7 +4,7 @@ import { Vis } from "../sim/fog";
 import { anchorBlocker, modeProgress, unitCost, weaponReady } from "../sim/goliath";
 import { isTransport, squadAlive, squadSize, unitSeenBy } from "../sim/infantry";
 import { liftedBy } from "../sim/lift";
-import { rulesOf } from "../sim/rules";
+import { goliathBase } from "../sim/rules";
 import type { BuildingKind, Faction, GoliathWeapon, QueueItem, Unit, UnitKind, World } from "../sim/types";
 import { hasBuilding } from "../sim/world";
 import { sfx } from "../game/audio";
@@ -544,14 +544,14 @@ export function createHud(api: HudApi): Hud {
     const strip = GOLIATH_STRIP.map(
       ({ k, short }, i) => `<span class="gw ${states[i]}" title="${GOLIATH.weapons[k].name}: ${said[states[i]!]}">${short}</span>`
     ).join("");
-    // ours, anchored: it trains squads, and under Nomads Harvesters too (a queue that
+    // ours, anchored: it trains squads, and under Nomads or Goliath Armada Harvesters too (a queue that
     // stopped when it packed up stays cancellable)
     const train = !own
       ? ""
       : g.queue.length > 0
         ? queueHtml(u.id, g.queue, u.faction)
         : g.mode === "anchored" && !g.lift
-          ? `<span class="hint">${rulesOf(w).nomads ? "Trains Harvesters and squads" : "Trains squads"} · tap the map to rally</span>`
+          ? `<span class="hint">${goliathBase(w) ? "Trains Harvesters and squads" : "Trains squads"} · tap the map to rally</span>`
           : "";
     const live: Live = { hp: `${Math.ceil(u.hp)} / ${st.hp}`, head: headShare(g.queue), mode: goliathMode(u) };
     // (short landscape screens put the name and the HP line side by side: style.css)
