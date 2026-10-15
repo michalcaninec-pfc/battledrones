@@ -203,6 +203,17 @@ export function revealHtml(mapId: string): string {
     </div></div>`;
 }
 
+/**
+ * The pause menu's map line: the map's name and, for a generated one, its
+ * biome and seed code (to replay it or report a bug on it). Uncharted keeps
+ * the name back, as the menu card does: it gives the layout away.
+ */
+export function pauseMapHtml(mapId: string, uncharted: boolean): string {
+  const def = mapById(mapId);
+  if (!def.random) return `<p class="mapline">${escHtml(def.name)}</p>`;
+  return `<p class="mapline">🎲 ${escHtml(uncharted ? "Uncharted" : def.name)} · ${escHtml(def.biome)} · seed <b>#${escHtml(def.random.code)}</b></p>`;
+}
+
 /** A portrait in a side's paint: the enemy's units and buildings (or either side's, to a spectator) show red. */
 const icon = (kind: string, f: Faction = "blue") => `assets/icons/${f === "red" ? "red/" : ""}${kind}.webp`;
 
@@ -896,6 +907,7 @@ export function createHud(api: HudApi): Hud {
       <div class="panel">
         <h1>PAUSED</h1>
         <p class="time">${ops ? ops.pauseLine() : surv ? surv.pauseLine() : api.strategies ? "AI vs AI" : `vs ${api.enemy.strategy} AI · ${api.enemy.difficulty}`}</p>
+        ${pauseMapHtml(w.mapId, uncharted)}
         ${ops ? ops.pauseHtml() : ""}
         ${pauseRulesHtml(w)}
         <button class="cta" id="p-resume">▶ Resume</button>

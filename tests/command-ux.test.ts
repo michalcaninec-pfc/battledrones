@@ -706,3 +706,50 @@ describe("Condor: boarding and drops from taps", () => {
     expect(c.squads.matches(0, c.selectedUnits, w)).toBe(true); // (the chip lights up)
   });
 });
+
+describe("tapping an enemy that nothing selected can hit", () => {
+  // Flak Crawlers and Menders beside a red Stinger: the Flak's guns only hit aircraft
+  const standoff = () => {
+    const w = field();
+    const flak = [spawnUnit(w, "flak-crawler", "blue", 15.5, 15.5), spawnUnit(w, "flak-crawler", "blue", 16.5, 15.5)];
+    const menders = [spawnUnit(w, "mender", "blue", 15.5, 14.5), spawnUnit(w, "mender", "blue", 16.5, 14.5)];
+    const foe = spawnUnit(w, "stinger", "red", 17.5, 16.5);
+    return { w, c: new Controller(w), flak, menders, foe };
+  };
+
+  it("says why they won't fire, and sends them there anyway", () => {
+    const { c, flak, menders, foe } = standoff();
+    c.selectUnits([...flak, ...menders].map((u) => u.id));
+    c.tapWorld(foe.x, foe.y, { kind: "enemy", id: foe.id, targetsAir: false });
+    expect(c.tip).toBe("Flak Crawlers only hit aircraft");
+    const cmds = c.drainCommands();
+    expect(cmds.some((k) => k.type === "attack")).toBe(false);
+    expect(cmds.some((k) => k.type === "attackMove")).toBe(true);
+  });
+
+  it("names one unit, or each kind, in the singular or plural", () => {
+    const { w, c } = standoff();
+    const stinger = spawnUnit(w, "stinger", "blue", 10.5, 10.5);
+    const mortars = [spawnUnit(w, "mortar", "blue", 11.5, 10.5), spawnUnit(w, "mortar", "blue", 12.5, 10.5)];
+    const wasp = spawnUnit(w, "wasp", "red", 12.5, 12.5);
+    c.selectUnits([stinger.id]);
+    c.tapWorld(wasp.x, wasp.y, { kind: "enemy", id: wasp.id, targetsAir: true });
+    expect(c.tip).toBe("Stinger only hits ground targets");
+    c.tip = null;
+    c.selectUnits([stinger.id, ...mortars.map((u) => u.id)]);
+    c.tapWorld(wasp.x, wasp.y, { kind: "enemy", id: wasp.id, targetsAir: true });
+    expect(c.tip).toBe("Stinger and Mortars only hit ground targets");
+  });
+
+  it("no tip when someone can hit it, or when nothing selected is armed", () => {
+    const { w, c, flak, menders, foe } = standoff();
+    const lancer = spawnUnit(w, "lancer", "blue", 14.5, 15.5);
+    c.selectUnits([...flak.map((u) => u.id), lancer.id]);
+    c.tapWorld(foe.x, foe.y, { kind: "enemy", id: foe.id, targetsAir: false });
+    expect(c.tip).toBeNull();
+    expect(c.drainCommands()).toContainEqual({ type: "attack", faction: "blue", unitIds: [lancer.id], targetId: foe.id });
+    c.selectUnits(menders.map((u) => u.id));
+    c.tapWorld(foe.x, foe.y, { kind: "enemy", id: foe.id, targetsAir: false });
+    expect(c.tip).toBeNull();
+  });
+});

@@ -3520,6 +3520,16 @@ button {
   font-weight: 700;
   color: #ffe7a6;
 }
+/* the pause menu's map, and a random map's seed code */
+.panel .mapline {
+  margin: -10px 0 14px;
+  font-size: 14px;
+  color: var(--dim);
+}
+.panel .mapline b {
+  color: var(--text);
+  letter-spacing: 1px;
+}
 
 /* end screen: XP, promotion, medals, stars, streak */
 .sec-career { display: flex; flex-direction: column; gap: 8px; }

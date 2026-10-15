@@ -282,6 +282,7 @@ export class Controller {
         return;
       }
       // none can: treat it as a tap on the ground there (an island drop, or a tip)
+      if (this.selectedAttackers(hit.targetsAir).length === 0) this.cantHitTip(hit.targetsAir);
     }
     if (hit.kind === "enemy" && this.selectedUnits.size === 0) return;
 
@@ -682,6 +683,21 @@ export class Controller {
     if (this.selectedBuilding !== null)
       this.enqueue({ type: "sell", faction: PLAYER, buildingId: this.selectedBuilding });
     this.selectedBuilding = null;
+  }
+
+  /**
+   * Tapped an enemy that no gun in the selection can hit (Flak Crawlers at a
+   * tank, Stingers at a drone): they head there all the same, and the ticker
+   * says why they won't open fire. Unarmed selections say nothing.
+   */
+  private cantHitTip(air: boolean): void {
+    const counts = new Map<UnitKind, number>();
+    for (const u of this.selectedOwn()) if (UNITS[u.kind].targets !== "none") counts.set(u.kind, (counts.get(u.kind) ?? 0) + 1);
+    if (counts.size === 0) return;
+    const names = [...counts].map(([k, n]) => (n === 1 ? UNITS[k].name : `${UNITS[k].name}s`));
+    const one = counts.size === 1 && [...counts.values()][0] === 1;
+    const who = names.length > 2 ? "These units" : names.join(" and ");
+    this.tip = `${who} only ${one ? "hits" : "hit"} ${air ? "ground targets" : "aircraft"}`;
   }
 
   /** Selected units able to shoot at the given domain (air or ground). */

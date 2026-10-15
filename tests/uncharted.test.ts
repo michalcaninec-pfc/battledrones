@@ -12,7 +12,7 @@ import { FOG_TARGET, Terrain3D } from "../src/game/three/terrain";
 import { fowUniforms } from "../src/game/three/materials";
 import { gameMode, unchartedMatch } from "../src/game/mode";
 import { mapThumbUrl } from "../src/game/assets";
-import { revealHtml, shroudRects } from "../src/ui/hud";
+import { pauseMapHtml, revealHtml, shroudRects } from "../src/ui/hud";
 
 // The terrain builds headless (see terrain-art.test.ts): a do-nothing canvas stands in for the DOM.
 const noop: unknown = new Proxy(function () {}, { get: (_t, k) => (k === Symbol.toPrimitive ? () => 0 : noop), apply: () => noop });
@@ -130,6 +130,24 @@ describe("Uncharted: the minimap", () => {
 
   it("draws nothing once it's all scouted", () => {
     expect(shroudRects(new Uint8Array(108 * 108).fill(Vis.Explored), 108, 108, 256)).toEqual([]);
+  });
+});
+
+describe("the pause menu's map line", () => {
+  it("gives a generated map's seed code (to replay or report it), but not its name played blind", () => {
+    const def = mapById(ID);
+    const seen = pauseMapHtml(ID, false);
+    expect(seen).toContain(def.name);
+    expect(seen).toContain(def.biome);
+    expect(seen).toContain(`#${def.random!.code}`);
+    const blind = pauseMapHtml(ID, true);
+    expect(blind).toContain(`#${def.random!.code}`);
+    expect(blind).toContain("Uncharted");
+    expect(blind).not.toContain(def.name);
+  });
+
+  it("names a built-in map", () => {
+    expect(pauseMapHtml("riverlands", false)).toContain(mapById("riverlands").name);
   });
 });
 
