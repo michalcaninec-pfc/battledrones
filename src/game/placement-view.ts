@@ -203,6 +203,12 @@ export class PlacementView {
     return true;
   }
 
+  /** A finger that left without a pointerup (gestures.ts strandedPointers): let go of it, building nothing. */
+  forget(id: number): void {
+    this.swallow.delete(id);
+    if (this.drag?.id === id) this.drag = null;
+  }
+
   /** A tap (or the 2nd tap of a double-tap) while placing; true = handled. */
   tap(sx: number, sy: number, type?: GesturePointer["pointerType"]): boolean {
     if (!this.active) return false;

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GestureRecognizer, TAP_SLOP_PX, isHoldRelease } from "../src/game/gestures";
+import { GestureRecognizer, STRAND_PX, TAP_SLOP_PX, isHoldRelease, strandedPointers } from "../src/game/gestures";
 
 function makeCallbacks() {
   return {
@@ -157,6 +157,81 @@ describe("touch gestures", () => {
     g.up(touch(1, 50, 50), 400); // up without tick() having run
     expect(cb.onTap).not.toHaveBeenCalled();
     expect(cb.onBoxEnd).toHaveBeenCalled(); // treated as an instant box
+  });
+
+  it("ignores moves and lifts of pointers it never saw go down", () => {
+    g.down(touch(1, 100, 100), 0);
+    g.move(touch(9, 300, 300), 20); // (a finger that landed on the HUD)
+    g.up(touch(9, 300, 300), 40);
+    expect(cb.onTap).not.toHaveBeenCalled();
+    expect(cb.onPan).not.toHaveBeenCalled();
+    g.up(touch(1, 101, 100), 80);
+    expect(cb.onTap).toHaveBeenCalledWith(101, 100, "touch");
+  });
+
+  it("a finger whose end never came is forgotten: the next tap is a tap again", () => {
+    // an edge swipe iOS abandoned: pointerdown, then never pointerup or pointercancel
+    g.down(touch(1, 4, 200), 0);
+    g.move(touch(1, 40, 200), 50);
+    // stuck: every later touch is the second finger of a pinch
+    g.down(touch(2, 300, 150), 1000);
+    g.up(touch(2, 300, 150), 1080);
+    expect(cb.onTap).not.toHaveBeenCalled();
+    // the next touchstart shows no finger near (40, 200)
+    g.down(touch(3, 300, 150), 2000);
+    g.forget([1], 2000);
+    g.up(touch(3, 301, 151), 2080);
+    expect(cb.onTap).toHaveBeenCalledWith(301, 151, "touch");
+    // and nothing is left behind
+    g.down(touch(4, 500, 100), 3000);
+    g.tick(3300);
+    expect(cb.onBoxStart).toHaveBeenCalledWith(500, 100);
+  });
+
+  it("forgetting a finger keeps the others going, fires nothing for it, and ends its box unreleased", () => {
+    g.down(touch(1, 4, 200), 0); // the lost one
+    g.down(touch(2, 100, 100), 1000);
+    g.down(touch(3, 200, 100), 1010);
+    g.forget([1], 1020);
+    g.move(touch(2, 75, 100), 1050); // a real pinch between 2 and 3: spread 100 -> 125
+    const [scale] = cb.onPinch.mock.calls.at(-1)!;
+    expect(scale).toBeCloseTo(1.25, 2);
+    expect(cb.onTap).not.toHaveBeenCalled();
+    // a lost finger drawing a box: the box goes, selecting nothing
+    g = new GestureRecognizer((cb = makeCallbacks()));
+    g.down(touch(1, 100, 100), 0);
+    g.tick(300);
+    g.move(touch(1, 160, 170), 350);
+    g.forget([1], 5000);
+    expect(cb.onBoxEnd).toHaveBeenCalledWith(160, 170, false);
+    g.up(touch(1, 160, 170), 5100); // (a late lift changes nothing)
+    expect(cb.onBoxEnd).toHaveBeenCalledTimes(1);
+    expect(cb.onTap).not.toHaveBeenCalled();
+    // forgetting pointers it doesn't track is a no-op
+    g.down(touch(2, 50, 50), 6000);
+    g.forget([7], 6010);
+    g.up(touch(2, 50, 50), 6050);
+    expect(cb.onTap).toHaveBeenCalledWith(50, 50, "touch");
+  });
+});
+
+describe("strandedPointers", () => {
+  const at = (x: number, y: number) => ({ clientX: x, clientY: y });
+  const tracked = (...ps: [number, number, number][]) => new Map(ps.map(([id, x, y]) => [id, { x, y }]));
+
+  it("keeps pointers with a finger under them and strands the rest", () => {
+    expect(strandedPointers(tracked(), [at(10, 10)])).toEqual([]);
+    expect(strandedPointers(tracked([1, 100, 100], [2, 300, 300]), [at(102, 99), at(300, 300)])).toEqual([]);
+    expect(strandedPointers(tracked([1, 4, 200], [2, 300, 150]), [at(300, 150)])).toEqual([1]);
+    expect(strandedPointers(tracked([1, 4, 200]), [])).toEqual([1]);
+    expect(strandedPointers(tracked([1, 100, 100]), [at(100 + STRAND_PX + 1, 100)])).toEqual([1]);
+  });
+
+  it("one finger vouches for one pointer: a lost pointer can't hide under a new finger", () => {
+    // the new finger (2) landed 20 px from the lost one (1): pointerdown came first, so 2 is tracked too
+    expect(strandedPointers(tracked([1, 280, 150], [2, 300, 150]), [at(300, 150)])).toEqual([1]);
+    // two real fingers close together both stay
+    expect(strandedPointers(tracked([1, 280, 150], [2, 300, 150]), [at(281, 150), at(300, 151)])).toEqual([]);
   });
 });
 

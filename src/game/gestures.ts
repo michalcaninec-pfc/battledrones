@@ -42,6 +42,40 @@ export const DOUBLE_TAP_SLOP_PX = 24;
 /** Finger distance must change this much before a pinch starts zooming —
  * otherwise two-finger pans wobble the zoom from natural finger jitter. */
 export const PINCH_ACTIVATE_PX = 16;
+/** A finger farther than this from where a pointer was last seen isn't that pointer's finger. */
+export const STRAND_PX = 64;
+
+/**
+ * Which tracked touch pointers have no finger on the screen any more? iOS
+ * Safari can end a touch with neither pointerup nor pointercancel (an edge
+ * swipe it abandons: WebKit bug 239014), so a recognizer left alone would
+ * count that finger as down for good. `touches` is every finger down now (a
+ * touchstart's TouchEvent.touches); each vouches for the nearest unclaimed
+ * pointer within STRAND_PX (client coordinates), and pointers no finger
+ * vouches for are stranded. The finger that just landed is in `touches`
+ * whether its pointerdown came before the touchstart or comes after.
+ */
+export function strandedPointers(
+  pointers: ReadonlyMap<number, { x: number; y: number }>,
+  touches: ArrayLike<{ clientX: number; clientY: number }>
+): number[] {
+  if (pointers.size === 0) return [];
+  const pairs: { id: number; t: number; d: number }[] = [];
+  for (const [id, p] of pointers)
+    for (let t = 0; t < touches.length; t++) {
+      const d = Math.hypot(touches[t]!.clientX - p.x, touches[t]!.clientY - p.y);
+      if (d <= STRAND_PX) pairs.push({ id, t, d });
+    }
+  pairs.sort((a, b) => a.d - b.d);
+  const held = new Set<number>();
+  const claimed = new Set<number>();
+  for (const { id, t } of pairs) {
+    if (held.has(id) || claimed.has(t)) continue;
+    held.add(id);
+    claimed.add(t);
+  }
+  return [...pointers.keys()].filter((id) => !held.has(id));
+}
 
 /**
  * Was this box (start and end corners) really a long-press released without
@@ -60,6 +94,7 @@ interface Tracked {
   id: number;
   x: number;
   y: number;
+  type: GesturePointer["pointerType"];
 }
 
 export class GestureRecognizer {
@@ -85,7 +120,7 @@ export class GestureRecognizer {
       this.cb.onRightClick(p.x, p.y);
       return;
     }
-    this.pointers.set(p.id, { id: p.id, x: p.x, y: p.y });
+    this.pointers.set(p.id, { id: p.id, x: p.x, y: p.y, type: p.pointerType });
 
     if (this.pointers.size === 2) {
       this.enterMulti();
@@ -107,11 +142,11 @@ export class GestureRecognizer {
   }
 
   move(p: GesturePointer, now: number): void {
+    // (a pointer this never saw go down, or forgot, steers nothing)
     const t = this.pointers.get(p.id);
-    if (t) {
-      t.x = p.x;
-      t.y = p.y;
-    }
+    if (!t) return;
+    t.x = p.x;
+    t.y = p.y;
 
     switch (this.mode) {
       case "pending": {
@@ -164,7 +199,7 @@ export class GestureRecognizer {
 
   up(p: GesturePointer, now: number): void {
     if (p.pointerType === "mouse" && p.button === 2) return;
-    this.pointers.delete(p.id);
+    if (!this.pointers.delete(p.id)) return;
 
     switch (this.mode) {
       case "pending": {
@@ -209,9 +244,27 @@ export class GestureRecognizer {
   }
 
   cancel(p: GesturePointer): void {
-    this.pointers.delete(p.id);
+    if (!this.pointers.delete(p.id)) return;
     if (this.mode === "box") this.cb.onBoxEnd(this.lastX, this.lastY, false);
     this.mode = this.pointers.size >= 2 ? "multi" : "idle";
+  }
+
+  /**
+   * Forget pointers whose fingers left without a word (see strandedPointers):
+   * one still counted as down would make every later touch the second finger
+   * of a pinch (pan and zoom only; no tap, no box) for the rest of the match.
+   * Nothing fires for them (a box they drew ends unreleased); the pointers
+   * still down start afresh where they are, as if they had just landed.
+   */
+  forget(ids: Iterable<number>, now: number): void {
+    let gone = false;
+    for (const id of ids) gone = this.pointers.delete(id) || gone;
+    if (!gone) return;
+    if (this.mode === "box") this.cb.onBoxEnd(this.lastX, this.lastY, false);
+    const rest = [...this.pointers.values()];
+    this.pointers.clear();
+    this.mode = "idle";
+    for (const t of rest) this.down({ id: t.id, x: t.x, y: t.y, pointerType: t.type }, now);
   }
 
   /**

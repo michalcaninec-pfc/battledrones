@@ -11,7 +11,7 @@ import type { Building, Command, Faction, FxEvent, Unit, World } from "../sim/ty
 import { buildingCenter, domainOf } from "../sim/world";
 import { sfx } from "./audio";
 import { Controller, PLAYER, type TapHit } from "./controller";
-import { GestureRecognizer, isHoldRelease, type GesturePointer } from "./gestures";
+import { GestureRecognizer, isHoldRelease, strandedPointers, type GesturePointer } from "./gestures";
 import { announce } from "./announce";
 import { gameMode, matchOptions, unchartedMatch } from "./mode";
 import { music } from "./music";
@@ -1349,6 +1349,8 @@ export class GameScene {
       const q = this.worldAt(p.x, p.y);
       this.powerUi.aim(q.x, q.y);
     };
+    /** Touch pointers down on the map, where last seen (client px): checked against the real fingers. */
+    const fingers = new Map<number, { x: number; y: number }>();
     const down = (e: PointerEvent) => {
       if (this.finale) return; // the camera belongs to the cinematic now
       try {
@@ -1357,24 +1359,46 @@ export class GameScene {
         /* synthetic events can't be captured */
       }
       this.glide = null; // touching the map stops any glide
+      if (e.pointerType === "touch") fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       const p = toPointer(e);
       aim(p);
       if (this.place.down(p)) return; // a finger on the ghost drags it
       this.gest.down(p, performance.now());
     };
     const move = (e: PointerEvent) => {
+      const f = fingers.get(e.pointerId);
+      if (f) {
+        f.x = e.clientX;
+        f.y = e.clientY;
+      }
       const p = toPointer(e);
       aim(p);
       if (!this.place.move(p)) this.gest.move(p, performance.now());
     };
     const up = (e: PointerEvent) => {
+      fingers.delete(e.pointerId);
       const p = toPointer(e);
       shift = e.shiftKey;
       if (!this.place.up(p)) this.gest.up(p, performance.now());
     };
     const cancel = (e: PointerEvent) => {
+      fingers.delete(e.pointerId);
       const p = toPointer(e);
       if (!this.place.up(p)) this.gest.cancel(p);
+    };
+    // iOS Safari can end a touch with neither pointerup nor pointercancel (an
+    // abandoned edge swipe), leaving a finger counted as down for good: every
+    // later touch became the second finger of a pinch (pan and zoom still
+    // worked; taps and boxes never did). Each touchstart lists the fingers
+    // really down (wherever they landed): let go of pointers with none there.
+    const touchstart = (e: TouchEvent) => {
+      const gone = strandedPointers(fingers, e.touches);
+      if (gone.length === 0) return;
+      for (const id of gone) {
+        fingers.delete(id);
+        this.place.forget(id);
+      }
+      this.gest.forget(gone, performance.now());
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -1386,6 +1410,7 @@ export class GameScene {
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", up);
     canvas.addEventListener("pointercancel", cancel);
+    window.addEventListener("touchstart", touchstart, { capture: true, passive: true });
     canvas.addEventListener("wheel", wheel, { passive: false });
 
     const typing = (e: KeyboardEvent) => {
@@ -1433,6 +1458,7 @@ export class GameScene {
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("touchstart", touchstart, { capture: true });
       canvas.removeEventListener("wheel", wheel);
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
