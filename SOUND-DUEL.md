@@ -101,6 +101,10 @@ code runs in the browser, in the AudioWorklet and in Node tests.
 | `src/versus/records.ts` | Sound-duel win/loss record; the saved battle record |
 | `src/versus/loop-peer.ts` | In-page sim + AI peer for `?duel=loop` |
 | `src/versus/relay-transport.ts` | `LinkTransport` through page functions for `?duel=relay` |
+| `src/versus/wifi-code.ts` | `?duel=wifi`'s handshake codes: a WebRTC offer or answer squeezed into ~110 bytes of base64url |
+| `src/versus/wifi-link.ts` | `WifiLink`: the RTCPeerConnection and its data channel, carrying RelayTransport's packets |
+| `src/versus/wifi-sheet.ts` | The handshake sheet before the lobby: QR codes, links, paste boxes |
+| `src/ui/wifi-reply.ts` | The reply link's page: hands the reply to the game's tab (plain game code, no versus import) |
 
 Import rules (enforced by a test like arena.test.ts):
 
@@ -1368,6 +1372,34 @@ does nothing. With an interactive feed, GameScene behaves as follows:
     pause and resign, and checks equal hashes and the same result. Its waits
     leave out stops of 3 s or more of a page's main thread outside relay
     cuts (a loaded machine, not the duel); shorter stops still count.
+- **`?duel=wifi`** (every build, a prototype): two phones on one Wi-Fi, over
+  a WebRTC data channel, with no signalling server. The Duel button skips
+  the rig and the guard and opens a handshake sheet first (wifi-sheet.ts):
+  - **Host** makes an invite: a QR code of
+    `…?duel=wifi#wifi=<code>`, with Share and Copy. The friend scans it with
+    the camera (or opens the link), and taps "Join your friend's duel"
+    (main.ts), which is the Duel tap.
+  - The guest's phone then shows its reply the same way,
+    `…?duel=wifi#wifi-reply=<code>`. The host scans it with its camera,
+    which opens a new tab: that page boots no game, hands the reply to the
+    game's tab over a BroadcastChannel and localStorage (wifi-reply.ts), and
+    says "Delivered". Or the reply is pasted into the host's sheet.
+  - The channel opens, and the lobby pairs over it at once in the role the
+    handshake gave (the inviter hosts), as on a relay seat. The channel is
+    unordered with no retransmits and carries RelayTransport's packets, so
+    everything from the pairing on is the relay's path.
+  - A code holds only what varies between sessions (wifi-code.ts): the ICE
+    username and password, the DTLS fingerprint and role, and the UDP
+    candidates. The receiver rebuilds the rest of the SDP from a template.
+    Each link is about 150 characters, a small QR code.
+  - Candidates come from the phone itself (mDNS host names) and Cloudflare's
+    free STUN (`stun.cloudflare.com:3478`). There is no TURN: two phones on
+    one Wi-Fi connect directly; phones on different networks behind
+    carrier-grade NAT often won't. Gathering stops 1.5 s after the first
+    candidate, or at 4 s.
+  - A rematch reloads the page, which drops the channel: its host makes a
+    new invite, and its guest pastes it, or opens the link (a new tab that
+    joins afresh).
 - **Phone testing** needs HTTPS: the microphone and AudioWorklet need a
   secure context, and a page at a LAN address over plain http:// has no Duel
   button. `npx vite --config tools/vite-https.config.ts` runs the dev server
@@ -1399,10 +1431,12 @@ Long tests set explicit timeouts (60–180 s).
 | `tests/versus-session.test.ts` | Two Sessions over PacketAir from pairing through a match with AIs: identical trails at 0/10/30% loss and a 3 s outage, a slow loader, the session CRC after GO, mode adaptation, leave and end frames from every phase, replayed lobby frames; the mode from GO to the match (fast lost one way, a friend that missed this phone's GO); the wait for a friend that plays on after a pause |
 | `tests/versus-pacing.test.ts` | Two Sessions stepped at 60 Hz over PacketAir (both plans and modes) and RoomLink: 10 ticks/s within 0.01 over three minutes, and at most 150 ms of stall |
 | `tests/versus-relay.test.ts` | RelayTransport checks each CRC for its own frame type, even under a session key of 0xFFFF |
+| `tests/versus-wifi.test.ts` | `?duel=wifi`'s codes: a Chromium offer keeps its credentials, fingerprint and UDP candidates (mDNS, IPv4, IPv6) and drops TCP and component 2; round trips under 160 characters; the rebuilt SDP parses back the same; garbage is refused; the links and paste parsing |
 | `tests/lift-split.test.ts` | A select-all split into pieces applied in one tick equals the single command; a Goliath-only order still waits |
 | `tests/link-guard.test.ts` | The FIR guard's response for both plans at 44.1 and 48 kHz, and delivery with a loud battle mix through the guard at own path +40 dB |
 | `tests/duel-fullstack.test.ts` | Pairing, then a 90 s duel through `RoomLink` and VersusFeed (and, for Join, the lobby, each modem starting at its tap) with AIs and 30-unit bursts on both phones: identical hash trails, at least 90% of ticks without a stall after the first 2 s (counted as ticks that waited and as time stalled), equal saved records that replay. High and low plans; 48/44.1 kHz at ±300 ppm with the jammer and own path +40 dB; a 1 s capture gap and a 700 ms jump; Join detection on both plans |
 | `tools/worklet-smoke.mjs` | The built worklet decodes both ways in Chromium |
+| `tools/wifi-smoke.mjs` | Two pages, one context each, through a real data channel: Host, the invite link opened by the guest, the reply after `--hold` ms by a new tab's hand-off (or `--paste`), pairing, opener picks, and `--ticks` of the match with equal hash trails |
 | `tools/duel-smoke.mjs` | Two pages through the relay, end to end: the lobby by hand, opener picks, orders, a one-way outage, pause, resign, equal trails, hashes and saved records, and a rematch with sides swapped; the match runs undrawn, and main-thread stops of 3 s or more outside relay cuts don't count |
 
 ## Before launch, on real phones

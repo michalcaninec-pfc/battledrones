@@ -21,6 +21,7 @@
     "art:textures": "python3 art/textures.py"
   },
   "dependencies": {
+    "qrcode-generator": "^2.0.4",
     "three": "^0.185.1"
   },
   "devDependencies": {

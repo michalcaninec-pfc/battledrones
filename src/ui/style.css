@@ -5710,3 +5710,19 @@ button {
     opacity: 1;
   }
 }
+
+/* ?duel=wifi's reply hand-off page (src/ui/wifi-reply.ts) */
+.wifi-reply { max-width: 420px; padding: 0 16px; text-align: center; }
+.wifi-reply .wr-status { margin: 12px 0; font-size: 16px; line-height: 1.4; }
+.wr-copy { display: flex; gap: 8px; }
+.wr-copy input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-hi);
+  background: #0c121c;
+  color: var(--text);
+  font: 13px ui-monospace, monospace;
+}
+.wr-copy .cta { flex: 0 0 auto; width: auto; margin: 0; }

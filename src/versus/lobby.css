@@ -161,3 +161,31 @@
 }
 .duel-go + .duel-status { text-align: center; }
 .duel-err { margin: 12px 0 4px; font-size: 17px; font-weight: 800; color: #ffb3a8; }
+
+/* ?duel=wifi's handshake sheet (src/versus/wifi-sheet.ts): the QR code, the link, the paste box */
+.wifi-qr {
+  width: min(72vw, 300px);
+  margin: 10px auto;
+  padding: 6px;
+  border-radius: 12px;
+  background: #fff;
+}
+.wifi-qr svg { display: block; width: 100%; height: auto; }
+.wifi-share { display: flex; gap: 8px; margin: 8px 0; }
+.wifi-share .cta { flex: 1 1 0; width: auto; margin: 0; }
+.wifi-url,
+.wifi-paste input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-hi);
+  background: #0c121c;
+  color: var(--text);
+  font: 13px ui-monospace, monospace;
+}
+.wifi-url { color: var(--dim); margin-bottom: 6px; }
+.wifisheet .duel-roles { grid-template-columns: 1fr; }
+.wifi-paste { display: flex; gap: 8px; margin: 8px 0 0; }
+.wifi-paste .cta { flex: 0 0 auto; width: auto; margin: 0; }
+.wifi-note:empty { display: none; }

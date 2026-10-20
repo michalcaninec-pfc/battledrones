@@ -21,8 +21,10 @@
  *
  * Practice links (every build): `?duel=loop` pairs with an in-page friend
  * over PacketAir (loop-peer.ts), `?duel=relay&seat=host|guest` through the
- * page functions __duelOut / __duelIn (relay-transport.ts). Neither opens the
- * rig or the guard, and both expose window.__duel = { state, tick, delay,
+ * page functions __duelOut / __duelIn (relay-transport.ts), and `?duel=wifi`
+ * over a WebRTC data channel between two phones, after a handshake by QR
+ * code or shared link (wifi-sheet.ts, wifi-link.ts) that decides the seat.
+ * None opens the rig or the guard, and all expose window.__duel = { state, tick, delay,
  * trail(), trails(from), hash(), result } for test harnesses (delay and
  * trails beyond the spec: the smoke's checks follow D, and compare the trail
  * at every tick).
@@ -143,6 +145,8 @@ import { NOTHING_HEARD_MESSAGE, NOTHING_HEARD_MS, VERSION_MESSAGE, type HostOffe
 import { DUEL_KEY, parseRematch, type RematchPlan } from "./records";
 import { RelayTransport } from "./relay-transport";
 import { PEER_HEARD_MS, RX_SILENT_MS, Session } from "./session";
+import type { WifiLink } from "./wifi-link";
+import { showWifiSheet } from "./wifi-sheet";
 
 export { openRig } from "../link/rig";
 
@@ -153,8 +157,8 @@ declare const __DUEL_HASH__: string | undefined;
 /** The duel build hash's first 16 bits (SOUND-DUEL.md "Build check"); 0 where the build defines none (tests). */
 export const duelBuild = (): number => (typeof __DUEL_HASH__ === "string" ? parseInt(__DUEL_HASH__.slice(0, 4), 16) || 0 : 0);
 
-/** ?duel=loop and ?duel=relay: a practice link, no sound. */
-export type PracticeMode = "loop" | "relay";
+/** ?duel=loop, ?duel=relay and ?duel=wifi: a practice link, no sound. */
+export type PracticeMode = "loop" | "relay" | "wifi";
 
 export interface DuelParams {
   /** "sound": the real thing (no ?duel, or another value). */
@@ -173,7 +177,7 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 export function parseDuelParams(search: string): DuelParams {
   const q = new URLSearchParams(search);
   const d = q.get("duel");
-  const mode = d === "loop" || d === "relay" ? d : "sound";
+  const mode = d === "loop" || d === "relay" || d === "wifi" ? d : "sound";
   const num = (k: string): number | null => {
     const v = q.get(k);
     if (v === null || v.trim() === "") return null;
@@ -850,12 +854,20 @@ export function closeRigOnPageGone(win: Pick<Window, "addEventListener" | "remov
 
 /** The lobby, after the Duel tap. */
 export function showLobby(o: LobbyOptions): void {
-  run(o, null);
+  if (parseDuelParams(location.search).mode === "wifi") wifiFirst(o, null);
+  else run(o, null);
 }
 
 /** The rematch's "Tap to reconnect": the lobby, pairing at once with the stored role and plan. */
 export function reconnect(o: LobbyOptions): void {
-  run(o, readRematch(true));
+  const r = readRematch(true);
+  if (parseDuelParams(location.search).mode === "wifi") wifiFirst(o, r);
+  else run(o, r);
+}
+
+/** ?duel=wifi: the handshake sheet first (a rematch keeps its role), then the lobby over the open link. */
+function wifiFirst(o: LobbyOptions, rematch: DuelRematch | null): void {
+  showWifiSheet({ host: o.host, role: rematch?.role ?? null, rematch: rematch !== null, onOpen: (link) => run(o, rematch, link), onClose: () => o.onClose("cancel") });
 }
 
 /** The relay smoke's window into the duel (practice links only). */
@@ -896,6 +908,7 @@ const esc = (s: string): string => s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;",
 export function tipsText(v: Pick<LobbyView, "practice" | "rematch">): string {
   if (v.practice === "loop") return "Still nothing? Reload the page and tap Duel again.";
   if (v.practice === "relay") return "Still nothing? Check that the other page is in the lobby and the relay connects the two.";
+  if (v.practice === "wifi") return "Still nothing? Check that both phones are still on the same Wi-Fi, then Cancel and make a new invite.";
   const sound = "Still nothing? Turn the volume up and the silent switch off. Unplug headphones and turn Bluetooth off. Keep the phones 10–30 cm apart.";
   return v.rematch ? sound : `${sound} Or try band Low on the host (Advanced).`;
 }
@@ -1127,6 +1140,7 @@ function errorHtml(v: LobbyView): { body: string; actions: string } {
       };
     }
     case "relay":
+      if (v.practice === "wifi") return { body: `<p class="duel-err">${esc(e.message)}</p><p class="sh-note">Close, then tap Duel to make a new invite.</p>`, actions: close };
       return { body: `<p class="duel-err">${esc(e.message)}</p><p class="sh-note">The page has no window.__duelOut: connect it with the relay harness.</p>`, actions: close };
     case "left":
       return { body: `<p class="duel-err">${esc(e.message)}.</p>`, actions: close };
@@ -1140,8 +1154,8 @@ function errorHtml(v: LobbyView): { body: string; actions: string } {
   }
 }
 
-/** The sheet: the machine, its env in the browser, the frame loop, the taps. */
-function run(o: LobbyOptions, rematch: DuelRematch | null): void {
+/** The sheet: the machine, its env in the browser, the frame loop, the taps (`wifi`: ?duel=wifi's open link). */
+function run(o: LobbyOptions, rematch: DuelRematch | null, wifi: WifiLink | null = null): void {
   const params = parseDuelParams(location.search);
   const practice = params.mode === "sound" ? null : params.mode;
   const build = duelBuild();
@@ -1157,8 +1171,8 @@ function run(o: LobbyOptions, rematch: DuelRematch | null): void {
   const wrap = document.createElement("div");
   wrap.className = "sheet-wrap duel-wrap";
   wrap.innerHTML = `<div class="sheet duelsheet" role="dialog" aria-label="Duel a friend">
-      <h2>🔊 ${rematch ? "Rematch" : "Duel a friend"}</h2>
-      ${practice ? `<p class="duel-practice">Practice link (no sound): ${practice === "loop" ? "an in-page friend" : "the relay"}</p>` : ""}
+      <h2>${practice === "wifi" ? "📶" : "🔊"} ${rematch ? "Rematch" : "Duel a friend"}</h2>
+      ${practice ? `<p class="duel-practice">Practice link (no sound): ${practice === "loop" ? "an in-page friend" : practice === "wifi" ? "Wi-Fi (WebRTC)" : "the relay"}</p>` : ""}
       <div class="duel-body"></div>
       <div class="sh-actions duel-actions"></div>
     </div>`;
@@ -1192,7 +1206,7 @@ function run(o: LobbyOptions, rematch: DuelRematch | null): void {
     rig: o.rig,
     practice,
     rematch,
-    seat: practice === "relay" ? params.seat : null,
+    seat: practice === "relay" ? params.seat : wifi?.role ?? null,
     prefs,
     savePrefs,
     offer: { map: o.shownMap, mutators: o.mutators, hostSide: practice ? params.side : "blue" },
@@ -1202,6 +1216,12 @@ function run(o: LobbyOptions, rematch: DuelRematch | null): void {
         const friendOffer = rematch ? offer : { ...offer, hostSide: cfg.tx === "host" ? params.side : params.side === "blue" ? "red" : "blue" };
         loop = new LoopLink({ params: params.loop, role: cfg.tx, offer: friendOffer, build, seed: (cryptoRandom() * 4294967296) >>> 0 });
         return loop.page;
+      }
+      if (practice === "wifi") {
+        dropPractice();
+        if (!wifi || wifi.state !== "open") throw new RelayError("The Wi-Fi link closed");
+        relay = wifi.transport();
+        return relay;
       }
       if (practice === "relay") {
         dropPractice();
@@ -1235,6 +1255,7 @@ function run(o: LobbyOptions, rematch: DuelRematch | null): void {
           if (exited) return;
           exited = true;
           dropPractice();
+          wifi?.close();
           o.rig?.close();
           if (!practice) sfx.setLinkGuard(null);
         },
@@ -1249,6 +1270,7 @@ function run(o: LobbyOptions, rematch: DuelRematch | null): void {
     released: (why) => {
       offPageGone();
       dropPractice();
+      wifi?.close();
       o.onClose(why);
     }
   };

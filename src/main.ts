@@ -20,6 +20,7 @@ import { appUpdate, mountUpdatePill } from "./ui/update";
 import { scrollCue } from "./ui/hscroll";
 import { showReplayPicker } from "./ui/replay-picker";
 import { openMapPreview } from "./ui/map-preview";
+import { WIFI_INVITE_HASH, codeFrom, showWifiReplyPage } from "./ui/wifi-reply";
 // (types only: the sound duel's code is a lazily loaded chunk, reached through loadDuel() alone)
 import type * as DuelLobby from "./versus/lobby";
 import type { VersusFeed } from "./versus/feed";
@@ -97,11 +98,14 @@ appUpdate.watch();
  * The sound duel (SOUND-DUEL.md "Getting into a duel"): its lobby and
  * everything under it come in one lazily loaded chunk, fetched once the menu
  * shows on a phone that can run it (a secure context with AudioWorklet and a
- * microphone), or in every build with ?duel=loop / ?duel=relay (no sound).
+ * microphone), or in every build with ?duel=loop / ?duel=relay / ?duel=wifi (no sound).
  */
 let duelLoad: Promise<typeof DuelLobby> | null = null;
 const loadDuel = (): Promise<typeof DuelLobby> => (duelLoad ??= import("./versus/lobby"));
-const duelPractice = ["loop", "relay"].includes(new URLSearchParams(location.search).get("duel") ?? "");
+const duelMode = new URLSearchParams(location.search).get("duel") ?? "";
+const duelPractice = ["loop", "relay", "wifi"].includes(duelMode);
+/** ?duel=wifi: a duel over a WebRTC data channel, set up by QR code or link (src/versus/wifi-sheet.ts). */
+const duelWifi = duelMode === "wifi";
 const canDuel = (): boolean =>
   duelPractice || (window.isSecureContext && typeof AudioWorkletNode === "function" && typeof navigator.mediaDevices?.getUserMedia === "function");
 const DUEL_UPDATE = "A new version is ready: reload this phone (and your friend's)";
@@ -315,7 +319,7 @@ function showMenu(linkedMap?: string | null): void {
       </div>
       <button class="mutbtn main"></button>
       <button class="cta big" id="play">▶ Play</button>
-      <div class="row" id="duelrow" hidden><button class="cta alt" id="play-duel" disabled>🔊 Duel a friend (sound)</button></div>
+      <div class="row" id="duelrow" hidden><button class="cta alt" id="play-duel" disabled>${duelWifi ? "📶 Duel a friend (Wi-Fi)" : "🔊 Duel a friend (sound)"}</button></div>
       <div class="row">
         <button class="cta alt" id="play-spectate">🤖 Watch AI vs AI</button>
         <button class="cta alt" id="play-replay">🎬 Watch a replay</button>
@@ -732,6 +736,36 @@ function showMenu(linkedMap?: string | null): void {
     if (duel) duelTap(duel, false);
     else if (duelBroken) duelUpdate();
   });
+  // ?duel=wifi#wifi=<invite>: the friend's invite link (scanned or tapped), joined with one tap, which is the
+  // Duel tap (the lobby takes the invite from the fragment)
+  if (duelWifi && !duelRematch && codeFrom(location.hash, WIFI_INVITE_HASH)) {
+    const scr = document.createElement("div");
+    scr.className = "screen";
+    scr.style.position = "fixed"; // (over the menu, which scrolls)
+    scr.innerHTML = `<div class="loadbox">
+        <button class="cta big" id="duel-join" disabled>📶 Join your friend's duel</button>
+        <button class="cta alt" id="duel-menu">Menu</button>
+      </div>`;
+    menu.appendChild(scr);
+    const btn = scr.querySelector<HTMLButtonElement>("#duel-join")!;
+    btn.addEventListener("click", () => {
+      if (duel) {
+        scr.remove();
+        duelTap(duel, false);
+      } else if (duelBroken) duelUpdate();
+    });
+    void loadDuel().then(
+      () => (btn.disabled = false),
+      () => {
+        btn.disabled = false;
+        btn.textContent = DUEL_UPDATE;
+      }
+    );
+    scr.querySelector("#duel-menu")!.addEventListener("click", () => {
+      history.replaceState(null, "", `${location.pathname}${location.search}`);
+      scr.remove();
+    });
+  }
   // a duel's Rematch: one button, whose tap is the Duel tap paired with the stored role and plan
   if (duelRematch) {
     music.stop();
@@ -839,7 +873,8 @@ function startDaily(op: DailyOp): void {
 const params = new URLSearchParams(location.search);
 const replayLink = params.get("replay")?.trim();
 if (replayLink) void watchLinked(replayLink, import.meta.env.DEV && params.has("follow"));
-else {
+// (a Wi-Fi duel's reply link, scanned by the host's camera into a new tab, boots nothing: it goes to the game's tab)
+else if (!showWifiReplyPage(document.getElementById("hud")!)) {
   // /?map=<id> (the random map panel's 🔗 link): preselect that map once; the saved pick carries it after
   const linkedMap = params.get("map")?.trim().toLowerCase();
   if (params.has("map")) {
