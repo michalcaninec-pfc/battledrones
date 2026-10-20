@@ -1304,6 +1304,12 @@ does nothing. With an interactive feed, GameScene behaves as follows:
 
 ## The lobby (`src/versus/lobby.ts`)
 
+A noise warning sits under the sheet's title on every step of a sound link
+(not a practice link): "⚠️ Warning: unpleasant noise. The sound link plays a
+constant high-pitched noise for the whole match. Many people find it
+unpleasant, and it may even cause headaches. Stop if it bothers you." It shows
+from the microphone prompt on, before Host or Join makes any sound.
+
 1. **Placement.** "Lay both phones flat, 10–30 cm apart. Turn the volume to
    about 75%, silent switch off. On an iPhone the sound may come from the
    earpiece at the top: turn the phones until both bars below are full."
