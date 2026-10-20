@@ -977,6 +977,8 @@ const bar = (q: number | null): string => {
 function meterHtml(v: LobbyView): string {
   const m = v.meter;
   if (!m) return "";
+  // (a Wi-Fi link has no sound to measure: its SNR is the relay's stand-in, so only the round trip)
+  if (v.practice === "wifi") return `<div class="duel-meter"><p class="dm-rtt" data-m="rtt"></p></div>`;
   if (v.step === "self-test")
     return `<div class="duel-meter"><div class="dm-row"><span class="dm-l">This phone hears itself</span>${bar(m.rxq)}<span class="dm-v" data-m="rx"></span></div></div>`;
   return `<div class="duel-meter">
@@ -998,7 +1000,8 @@ export function rttLine(v: Pick<LobbyView, "practice" | "pairing" | "meter">): s
     return d === undefined ? "Practice link" : `Practice link · input delay ${d * 100} ms`;
   }
   const rtt = v.meter?.rttMs ?? null;
-  return rtt === null ? "Round trip: measuring…" : `Round trip ${Math.round(rtt)} ms`;
+  const line = rtt === null ? "Round trip: measuring…" : `Round trip ${Math.round(rtt)} ms`;
+  return v.practice === "wifi" ? `Connected over Wi-Fi · ${line.charAt(0).toLowerCase()}${line.slice(1)}` : line;
 }
 
 /** The meter's numbers and bars, every frame. */
