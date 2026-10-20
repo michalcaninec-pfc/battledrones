@@ -182,6 +182,34 @@ describe("full screen survives the reload-based flows", () => {
   });
 });
 
+describe("the Duel tap's full screen waits for the microphone prompt (iPadOS hides it)", () => {
+  it("enterOnGesture asks on the next tap, not now, and its disarm undoes it", () => {
+    const page = fakeEnv();
+    const fs = new Fullscreen(() => page.env);
+    const disarm = fs.enterOnGesture();
+    expect(page.requests).toHaveLength(0);
+    fs.reload(); // armed counts as wanted
+    expect(page.store.get("battledrones.fullscreen")).toBe("1");
+    page.fire("pointerup");
+    expect(page.requests).toEqual([{ navigationUI: "hide" }]);
+    expect(page.count()).toBe(0);
+    disarm(); // (after the gesture: nothing left to do)
+
+    const closed = fakeEnv();
+    const fs2 = new Fullscreen(() => closed.env);
+    fs2.enterOnGesture()(); // the lobby closed first
+    expect(closed.count()).toBe(0);
+    closed.fire("pointerup");
+    expect(closed.requests).toHaveLength(0);
+    fs2.reload();
+    expect(closed.store.size).toBe(0);
+
+    const ios = fakeEnv({ api: false });
+    new Fullscreen(() => ios.env).enterOnGesture();
+    expect(ios.count()).toBe(0);
+  });
+});
+
 describe("the finale takes the camera from a gesture in progress", () => {
   it("reset() lets go of a pan or pinch without firing anything", () => {
     const cb = {

@@ -142,16 +142,34 @@ export class Fullscreen {
     } catch {
       /* ignore */
     }
-    if (!wanted || !env.doc.documentElement.requestFullscreen) return;
+    if (wanted) this.enterOnGesture();
+  }
+
+  /**
+   * Ask for full screen on the next tap or key, not this one. The Duel tap
+   * waits so: on iPadOS a full-screen page hides the microphone prompt, so
+   * it arms this once the rig has the microphone (main.ts duelTap). Returns
+   * a disarm, a no-op once the gesture came.
+   */
+  enterOnGesture(): () => void {
+    const env = this.env();
+    if (!env.doc.documentElement.requestFullscreen) return () => undefined;
     this.pending = true;
+    let armed = true;
+    const disarm = () => {
+      if (!armed) return;
+      armed = false;
+      for (const type of GESTURES) env.win.removeEventListener(type, onGesture, true);
+      this.pending = false;
+    };
     const onGesture = (e: Event) => {
       if (e.type === "keydown" && (e as KeyboardEvent).key === "Escape") return; // grants no activation
-      for (const type of GESTURES) env.win.removeEventListener(type, onGesture, true);
-      this.pending = false; // (enter() holds it again while its request is in flight)
+      disarm(); // (enter() holds pending again while its request is in flight)
       void this.enter();
     };
     // capture: runs before anything the gesture triggers (even a reload)
     for (const type of GESTURES) env.win.addEventListener(type, onGesture, true);
+    return disarm;
   }
 }
 

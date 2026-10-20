@@ -10,7 +10,8 @@
  *
  *   the Duel tap (main.ts, synchronously):  const t = duel.tapPlan(); sfx.unlock()
  *     const rig = t.practice ? null : duel.openRig({ micMode: t.micMode })
- *     t.practice || sfx.setLinkGuard("high"); music.stop(); void fullscreen.enter()
+ *     t.practice || sfx.setLinkGuard("high"); music.stop()
+ *     rig ? rig.ready.then(() => fullscreen.enterOnGesture()) : void fullscreen.enter()
  *     duel.showLobby({ host: menu, rig, shownMap, mutators, start, onClose })
  *   the rematch's reconnect tap: the same with tapPlan(true), then duel.reconnect({ … })
  *

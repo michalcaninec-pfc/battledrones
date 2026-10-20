@@ -1135,7 +1135,11 @@ master → high-pass 300 Hz → guardGain (−(GUARD_CUT_DB + makeup)) → limit
   2. `duel.openRig({ micMode })`;
   3. `sfx.setLinkGuard("high")`;
   4. `music.stop()`;
-  5. `void fullscreen.enter()` (last: it consumes the activation);
+  5. full screen: on a practice link `void fullscreen.enter()` (last: it
+     consumes the activation); otherwise, once `rig.ready` resolves,
+     `fullscreen.enterOnGesture()`, so the request comes on the first tap after
+     the microphone is in (on iPadOS a full-screen page hides the microphone
+     prompt). A lobby that closes first disarms it;
   6. `duel.showLobby({ shownMap, mutators, start })`.
 
   If the import or `addModule` fails, the lobby says "A new version is ready:

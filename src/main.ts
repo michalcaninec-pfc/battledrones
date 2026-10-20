@@ -664,9 +664,13 @@ function showMenu(linkedMap?: string | null): void {
   /** The duel's match: main's begin, with the agreed map, mutators and side (never saved). */
   const startDuel = (feed: VersusFeed) => void begin(false, () => duelSetup(feed.config), feed);
   let rematchScreen: HTMLElement | null = null;
+  /** The Duel tap's full screen, armed for the next tap once the rig has the microphone. */
+  let disarmFullscreen: (() => void) | null = null;
   /** The lobby let the duel's audio go with no match (Cancel, an error, the rematch's fallback), or the rematch was declined: the menu again. */
   const duelClosed = () => {
     duelLive = false;
+    disarmFullscreen?.();
+    disarmFullscreen = null;
     // (a game began from the menu while a lobby still said the end, after a Cancel past GO: the menu and its music
     // are gone, the game's own music plays, and the lobby has let the rig, the guard and link mode go itself)
     if (starting) return;
@@ -698,7 +702,18 @@ function showMenu(linkedMap?: string | null): void {
         console.warn("link guard:", e); // (the duel goes on without it)
       }
     music.stop();
-    void fullscreen.enter(); // (last: it consumes the activation)
+    // full screen: a practice link's at once (last: it consumes the activation), the rig's on the first tap once
+    // it has the microphone, as on iPadOS a full-screen page hides the microphone prompt
+    if (!rig) void fullscreen.enter();
+    else
+      rig.ready.then(
+        () => {
+          if (!duelLive || rig.state === "closed") return; // (this lobby let it go)
+          disarmFullscreen?.();
+          disarmFullscreen = fullscreen.enterOnGesture();
+        },
+        () => undefined // (the lobby tells it)
+      );
     const o = { host: menu, rig, shownMap: shownMap(), mutators: activeMutators(), start: startDuel, onClose: duelClosed };
     if (rematch) d.reconnect(o);
     else d.showLobby(o);
