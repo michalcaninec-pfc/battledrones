@@ -319,7 +319,7 @@ function showMenu(linkedMap?: string | null): void {
       </div>
       <button class="mutbtn main"></button>
       <button class="cta big" id="play">▶ Play</button>
-      <div class="row" id="duelrow" hidden><button class="cta alt" id="play-duel" disabled>${duelWifi ? "📶 Duel a friend (Wi-Fi)" : "🔊 Duel a friend (sound)"}</button></div>
+      <div class="row" id="duelrow" hidden><button class="cta alt" id="play-duel" disabled>${duelWifi ? "📶 Duel a friend (Wi-Fi)" : "🔊 Duel a friend (sound)"}</button><button class="cta alt" id="play-wifi" disabled hidden>📶 Duel a friend (Wi-Fi)</button></div>
       <div class="row">
         <button class="cta alt" id="play-spectate">🤖 Watch AI vs AI</button>
         <button class="cta alt" id="play-replay">🎬 Watch a replay</button>
@@ -347,10 +347,18 @@ function showMenu(linkedMap?: string | null): void {
   const offMute = sfx.onChange(syncMute);
   muteBtn.addEventListener("click", () => sfx.setMuted(!sfx.muted));
   const offUpdate = mountUpdatePill(menu);
-  // the sound duel's button (Skirmish only), disabled until its chunk is in
+  // the sound duel's button and the Wi-Fi duel's (Skirmish only), disabled until the duel's chunk is in. The
+  // Wi-Fi button is ?duel=wifi's Duel button: its tap puts that in the address (the lobby and a rematch's reload
+  // read the mode there), and a lobby closed with no match takes it out again. A practice link has its one button.
   const duelable = canDuel();
+  const wifiable = !duelPractice && typeof RTCPeerConnection === "function";
   const duelRow = menu.querySelector<HTMLElement>("#duelrow")!;
   const duelBtn = menu.querySelector<HTMLButtonElement>("#play-duel")!;
+  const wifiBtn = menu.querySelector<HTMLButtonElement>("#play-wifi")!;
+  duelBtn.hidden = !duelable;
+  wifiBtn.hidden = !wifiable;
+  /** The Wi-Fi button put ?duel=wifi in the address. */
+  let wifiAdded = false;
   let duel: typeof DuelLobby | null = null;
   let duelBroken = false;
   let duelLoaded = false;
@@ -358,10 +366,12 @@ function showMenu(linkedMap?: string | null): void {
   let duelLive = false;
   const syncDuelBtn = () => {
     const on = duelLoaded && !duelLive;
-    duelBtn.disabled = !on;
-    duelBtn.style.opacity = on ? "" : "0.6";
+    for (const b of [duelBtn, wifiBtn]) {
+      b.disabled = !on;
+      b.style.opacity = on ? "" : "0.6";
+    }
   };
-  if (duelable || duelRematch) {
+  if (duelable || wifiable || duelRematch) {
     syncDuelBtn();
     loadDuel()
       .then(
@@ -457,7 +467,7 @@ function showMenu(linkedMap?: string | null): void {
     syncRandom();
     ops.sync();
     menu.querySelector<HTMLElement>("#play-spectate")!.hidden = opsMode;
-    duelRow.hidden = !duelable || gameMode.mode !== "skirmish";
+    duelRow.hidden = !(duelable || wifiable) || gameMode.mode !== "skirmish";
     menu.classList.toggle("ops-mode", opsMode);
     // Last Stand isn't offered on every map (the island map): show the first that is, without
     // losing the skirmish pick (Play points the match at the shown map: see begin)
@@ -673,6 +683,13 @@ function showMenu(linkedMap?: string | null): void {
   /** The lobby let the duel's audio go with no match (Cancel, an error, the rematch's fallback), or the rematch was declined: the menu again. */
   const duelClosed = () => {
     duelLive = false;
+    if (wifiAdded) {
+      wifiAdded = false;
+      const q = new URLSearchParams(location.search);
+      q.delete("duel");
+      const qs = q.toString();
+      history.replaceState(null, "", `${location.pathname}${qs ? `?${qs}` : ""}${location.hash}`);
+    }
     disarmFullscreen?.();
     disarmFullscreen = null;
     // (a game began from the menu while a lobby still said the end, after a Cancel past GO: the menu and its music
@@ -735,6 +752,15 @@ function showMenu(linkedMap?: string | null): void {
   duelBtn.addEventListener("click", () => {
     if (duel) duelTap(duel, false);
     else if (duelBroken) duelUpdate();
+  });
+  wifiBtn.addEventListener("click", () => {
+    if (duelBroken) return duelUpdate();
+    if (!duel || duelLive) return;
+    const q = new URLSearchParams(location.search);
+    q.set("duel", "wifi");
+    history.replaceState(null, "", `${location.pathname}?${q}${location.hash}`);
+    wifiAdded = true;
+    duelTap(duel, false);
   });
   // ?duel=wifi#wifi=<invite>: the friend's invite link (scanned or tapped), joined with one tap, which is the
   // Duel tap (the lobby takes the invite from the fragment)

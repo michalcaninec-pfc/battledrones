@@ -3,8 +3,9 @@
 // up a real WebRTC data channel with the handshake codes only, then play in
 // lockstep over it.
 //
-//   1. The host taps Duel, then Host, and reads its invite link off the sheet
-//      (what the QR code holds).
+//   1. The host, on the plain menu (no ?duel), taps "Duel a friend (Wi-Fi)",
+//      Cancels (the address loses ?duel=wifi again), taps it again, then
+//      Host, and reads its invite link off the sheet (what the QR code holds).
 //   2. The guest opens the invite link (as the camera would), taps "Join your
 //      friend's duel", and reads its reply link.
 //   3. After --hold ms (the host taking its time to scan), the reply reaches
@@ -114,10 +115,17 @@ const linkOf = async (p) => {
 
 try {
   // 1. the host's invite
-  await host.page.goto(new URL("?duel=wifi", base).href);
-  await host.page.waitForSelector("#play-duel:not([disabled])", { timeout: 30000 });
-  check((await host.page.locator("#play-duel").innerText()).includes("Wi-Fi"), "the Duel button says Wi-Fi");
-  await host.page.locator("#play-duel").tap();
+  await host.page.goto(base.href);
+  await host.page.waitForSelector("#play-wifi:not([disabled])", { timeout: 30000 });
+  check(await host.page.locator("#play-wifi").isVisible(), "the menu has a Wi-Fi duel button");
+  await host.page.locator("#play-wifi").tap();
+  await host.page.waitForSelector(".wifisheet", { timeout: 10000 });
+  check((await host.page.evaluate(() => location.search)) === "?duel=wifi", "the Wi-Fi tap puts ?duel=wifi in the address");
+  await host.page.locator(".wifisheet [data-act=cancel]").tap();
+  await host.page.waitForSelector(".wifisheet", { state: "detached", timeout: 10000 });
+  check((await host.page.evaluate(() => location.search)) === "", "Cancel takes it out again");
+  await host.page.waitForSelector("#play-wifi:not([disabled])", { timeout: 10000 });
+  await host.page.locator("#play-wifi").tap();
   await host.page.locator(".wifisheet [data-act=host]").tap();
   const invite = await linkOf(host);
   check(/\?duel=wifi#wifi=[A-Za-z0-9_-]+$/.test(invite), `the invite link: ${invite.length} characters`);

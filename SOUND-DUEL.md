@@ -1379,8 +1379,12 @@ from the microphone prompt on, before Host or Join makes any sound.
     leave out stops of 3 s or more of a page's main thread outside relay
     cuts (a loaded machine, not the duel); shorter stops still count.
 - **`?duel=wifi`** (every build, a prototype): two phones on one Wi-Fi, over
-  a WebRTC data channel, with no signalling server. The Duel button skips
-  the rig and the guard and opens a handshake sheet first (wifi-sheet.ts):
+  a WebRTC data channel, with no signalling server. The menu offers it as
+  its own button, "📶 Duel a friend (Wi-Fi)", next to the sound duel's
+  (wherever RTCPeerConnection exists): its tap puts `?duel=wifi` in the
+  address, which a lobby closed with no match takes out again. The Duel
+  tap skips the rig and the guard and opens a handshake sheet first
+  (wifi-sheet.ts):
   - **Host** makes an invite: a QR code of
     `…?duel=wifi#wifi=<code>`, with Share and Copy. The friend scans it with
     the camera (or opens the link), and taps "Join your friend's duel"
