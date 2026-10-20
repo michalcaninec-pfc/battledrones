@@ -927,6 +927,10 @@ const QUIET_TEXT = "Your friend's phone has gone quiet. Bring the phones closer,
 const PLACEMENT =
   "Lay both phones flat, 10–30 cm apart. Turn the volume to about 75%, silent switch off. On an iPhone the sound may come from the earpiece at the top: turn the phones until both bars below are full.";
 
+/** Above every step of a sound link (not a practice link, which plays none), before any of it is heard. */
+const NOISE_WARNING =
+  "⚠️ <b>Warning: unpleasant noise.</b> The sound link plays a constant high-pitched noise for the whole match. Many people find it unpleasant, and it may even cause headaches. Stop if it bothers you.";
+
 const iconUrl = (kind: string, side: Faction): string => `assets/icons/${side === "red" ? "red/" : ""}${kind}.webp`;
 
 /** The map as the paired view names it: a built-in map's name, a generated one's name and code. */
@@ -1175,7 +1179,7 @@ function run(o: LobbyOptions, rematch: DuelRematch | null, wifi: WifiLink | null
   wrap.className = "sheet-wrap duel-wrap";
   wrap.innerHTML = `<div class="sheet duelsheet" role="dialog" aria-label="Duel a friend">
       <h2>${practice === "wifi" ? "📶" : "🔊"} ${rematch ? "Rematch" : "Duel a friend"}</h2>
-      ${practice ? `<p class="duel-practice">Practice link (no sound): ${practice === "loop" ? "an in-page friend" : practice === "wifi" ? "Wi-Fi (WebRTC)" : "the relay"}</p>` : ""}
+      ${practice ? `<p class="duel-practice">Practice link (no sound): ${practice === "loop" ? "an in-page friend" : practice === "wifi" ? "Wi-Fi (WebRTC)" : "the relay"}</p>` : `<p class="duel-noise" role="note">${NOISE_WARNING}</p>`}
       <div class="duel-body"></div>
       <div class="sh-actions duel-actions"></div>
     </div>`;

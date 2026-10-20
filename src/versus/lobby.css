@@ -11,6 +11,17 @@
   font-size: 12px;
   font-weight: 700;
 }
+.duel-noise {
+  margin: 4px 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 196, 0, 0.16);
+  border: 2px solid var(--gold);
+  color: #fff3c4;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.duel-noise b { color: var(--gold); }
 .duel-place { line-height: 1.35; }
 .duel-status { margin: 10px 0; font-size: 16px; font-weight: 700; }
 .duel-roles {
