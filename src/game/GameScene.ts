@@ -23,6 +23,7 @@ import { baseGoliath, calldownThreatens, planTicks } from "./awareness";
 import { HINTS } from "./hints";
 import { SurvivalPresenter, finishRun } from "./survival";
 import { chronicleOf, type Chronicle } from "./chronicle";
+import { CINE_KEY, Director } from "./director";
 import { Finale, finaleBanner, finaleOutcome, finaleZoom, freeAreaOffset, type FinaleCause } from "./finale";
 import { HeroPresenter } from "./hero-fx";
 import { aiSeed, aiStrategy, announceRules, opEnemyAi, settleCareer } from "./meta";
@@ -39,6 +40,7 @@ import { CommandUi } from "../ui/command";
 import { showOpenerPicker } from "../ui/openers";
 import { createPowerPanel, type PowerPanel } from "../ui/powers";
 import { createObjectivePill, type ObjectivePill } from "../ui/objectives";
+import { mountCineToggle, type CineToggle } from "../ui/cinecam";
 import { fitZoom, homeBox, hudInsets, startBox } from "./framing";
 import { Stage } from "./three/stage";
 import { Terrain3D, type TerrainArt } from "./three/terrain";
@@ -148,6 +150,10 @@ export class GameScene {
   /** Smooth-zoom target and its screen anchor point (CSS px). */
   private targetZoom = DEFAULT_ZOOM;
   private zoomAnchor: { x: number; y: number } | null = null;
+  /** AI vs AI: the cinematic camera's director (null when playing), whether it's switched on, and its 🎥 button. */
+  private cine: Director | null = null;
+  private cineOn = true;
+  private cineUi: CineToggle | null = null;
   /** Pan momentum: CSS-px/frame velocity that decays after release. */
   private glide: { x: number; y: number } | null = null;
   private lastPan = { x: 0, y: 0 };
@@ -330,6 +336,7 @@ export class GameScene {
       // (the HQ-kill cinematic owns the camera: minimap, toasts, banners and zoom buttons wait)
       centerCamera: (wx, wy) => {
         if (this.finale) return;
+        this.cine?.hold();
         this.glide = null;
         rig.centerOn(wx, wy);
       },
@@ -361,8 +368,21 @@ export class GameScene {
       sees: (x, y) => this.seesPoint(x, y),
       seesUnit: (u) => this.unitVisible(u),
       cinematic: () => !!this.finale,
-      pulse: (x, y, col) => this.fx.pulse(x, y, col, 1.4)
+      pulse: (x, y, col) => this.fx.pulse(x, y, col, 1.4),
+      took: () => this.cine?.hold()
     });
+    if (gameMode.spectator) {
+      // AI vs AI: the cinematic camera follows the action (on unless switched off before)
+      this.cine = new Director(this.world);
+      try {
+        this.cineOn = localStorage.getItem(CINE_KEY) !== "0";
+      } catch {
+        /* storage blocked: on */
+      }
+      const cineUi = mountCineToggle(document.getElementById("hud")!, () => this.toggleCine());
+      this.cineUi = cineUi;
+      this.teardown.push(() => cineUi.destroy());
+    }
     this.command = new CommandUi({
       root: document.getElementById("hud")!, world: this.world, ctrl: this.ctrl, spectator: gameMode.spectator,
       glideTo: (x, y) => this.aware.glideTo(x, y),
@@ -552,6 +572,7 @@ export class GameScene {
 
   /** Nudge the smooth-zoom target (zoom buttons, +/- keys, wheel). */
   zoomBy(factor: number, anchorX?: number, anchorY?: number): void {
+    this.cine?.hold(); // (the player zooming takes the camera from the director for a while)
     this.targetZoom = this.clampedZoom(this.targetZoom * factor);
     this.zoomAnchor = anchorX !== undefined && anchorY !== undefined ? { x: anchorX, y: anchorY } : null;
   }
@@ -566,8 +587,47 @@ export class GameScene {
     return Math.max(0, 1 - d / 8) * zoomOut;
   }
 
+  /** AI vs AI: switch the cinematic camera on or off (the 🎥 button, C). */
+  toggleCine(): void {
+    if (!this.cine) return;
+    this.cineOn = !this.cineOn;
+    try {
+      localStorage.setItem(CINE_KEY, this.cineOn ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    if (this.cineOn) this.cine.reset({ ...this.aware.viewCentre(), zoom: this.stage.rig.zoom });
+    this.cineUi?.set(this.cineOn, false);
+    sfx.play("click", 0.5);
+    this.hud.notify(this.cineOn ? "🎥 Cinematic camera on" : "🎥 Cinematic camera off — the camera is yours");
+  }
+
+  /**
+   * AI vs AI with the cinematic camera on: put the camera where the director
+   * says. False when it isn't driving this frame (off, the player has the
+   * camera for a moment, or the finale owns it).
+   */
+  private directCamera(delta: number): boolean {
+    const cine = this.cine;
+    if (!cine) return false;
+    this.cineUi?.set(this.cineOn, cine.held);
+    if (!this.cineOn || this.finale) return false;
+    const rig = this.stage.rig;
+    const shot = cine.update(delta / 1000, { ...this.aware.viewCentre(), zoom: rig.zoom });
+    this.cineUi?.set(true, !shot);
+    if (!shot) return false;
+    rig.zoom = this.clampedZoom(shot.zoom);
+    this.targetZoom = rig.zoom;
+    this.zoomAnchor = null;
+    this.glide = null;
+    const c = this.aware.playCentre();
+    rig.placeAt(shot.x, shot.y, c.x, c.y);
+    return true;
+  }
+
   private updateCamera(delta: number): void {
     const rig = this.stage.rig;
+    if (this.directCamera(delta)) return;
     if (Math.abs(rig.zoom - this.targetZoom) > 0.01) {
       const t = 1 - Math.pow(0.0025, delta / 1000);
       const next = rig.zoom + (this.targetZoom - rig.zoom) * t;
@@ -585,6 +645,7 @@ export class GameScene {
     if (k.has("ArrowUp") || k.has("KeyW")) ky -= 1;
     if (k.has("ArrowDown") || k.has("KeyS")) ky += 1;
     if (kx !== 0 || ky !== 0) {
+      this.cine?.hold();
       rig.pan(-kx * pan, -ky * pan);
       this.glide = null;
     }
@@ -770,6 +831,7 @@ export class GameScene {
   private afterTick(): void {
     // first: game-speed safety may drop to 1× and say why, so the alerts below can stay quiet
     this.aware.events(this.world.fx, this.simSeconds);
+    this.cine?.events(this.world.fx, this.simSeconds);
     for (const ev of this.world.fx) {
       this.handleFx(ev);
       this.wrecks.onFx(ev);
@@ -1302,6 +1364,7 @@ export class GameScene {
         if (ids.length > 0) this.ctrl.selectUnits(ids);
       },
       onPan: (dx, dy) => {
+        this.cine?.hold();
         rig.pan(dx, dy);
         this.lastPan = { x: dx, y: dy };
         this.glide = null;
@@ -1311,6 +1374,7 @@ export class GameScene {
         this.lastPan = { x: 0, y: 0 };
       },
       onPinch: (scale, cx, cy) => {
+        this.cine?.hold();
         rig.zoomAround(this.clampedZoom(rig.zoom * scale), cx, cy);
         this.targetZoom = rig.zoom; // pinch is immediate; keep target in sync
       },
@@ -1420,7 +1484,10 @@ export class GameScene {
     const keydown = (e: KeyboardEvent) => {
       if (typing(e)) return;
       if (/^Arrow/.test(e.code) || ["KeyW", "KeyA", "KeyS", "KeyD"].includes(e.code)) {
-        if (!e.ctrlKey && !e.metaKey) this.keys.add(e.code);
+        if (!e.ctrlKey && !e.metaKey) {
+          this.keys.add(e.code);
+          this.cine?.hold();
+        }
         if (/^Arrow/.test(e.code)) e.preventDefault();
       }
       if (e.key === "Escape") {
@@ -1441,6 +1508,7 @@ export class GameScene {
       else if (e.key === "Delete") this.ctrl.sellSelected();
       else if (e.key === ".") this.aware.cycleSpeed();
       else if (e.key === "j") this.aware.jump();
+      else if (e.key === "c") this.toggleCine();
       else if (/^Digit[1-3]$/.test(e.code)) {
         // squads: 1–3 select (twice: fly there); Ctrl/Cmd/Shift + 1–3 save
         const save = e.ctrlKey || e.metaKey || e.shiftKey;

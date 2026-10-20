@@ -955,6 +955,26 @@ enemies you can currently see.
   Spectators get amber "Fight" / "Red HQ" arrows for both sides. Measured:
   a camera parked on the HQ has at least one hotspot elsewhere 51% of the
   match.
+- **Cinematic camera (AI vs AI):** on by default, toggled by the 🎥 button
+  in the zoom stack (above ⚡) or C, remembered in `localStorage`
+  (`battledrones.cinecam`). A director (`src/game/director.ts`, tested)
+  heats 6-tile cells from both sides' shots (0.04), hits (0.12; buildings
+  0.2, an HQ 0.45) and deaths (0.35 + 0.1 per 100 scrap), cooling 20% per
+  sim second, and every 0.5 s picks the hottest 3×3-cell area, following
+  it as the fight moves. It holds a subject at least 5 s and only switches
+  to one 1.7× hotter; when nothing is hot it tours the armies, one side's
+  densest knot then the other's every 9 s. Zoom follows how spread out the
+  action is (58 tight, 30 sprawling), breathes ±7% over 23 s, and the look
+  point drifts ~1.4 tiles so the camera never sits still; both ease on
+  critically damped springs. Surprises take the camera at once: a calldown,
+  a Goliath rolling out or falling, the first shot on an HQ after 30 s, a
+  Goliath weapon knocked out, an Uplink changing hands, a veteran or a
+  350+ scrap unit dying. Farther than 24 tiles away that's a hard cut (at
+  most one per 12 s), nearer a glide, with a 1.25× push-in easing out over
+  4 s. Panning, zooming, the minimap, a toast, an edge arrow or ⚡ hand the
+  camera to the player; the director takes it back 8 s after the last
+  touch (the 🎥 button goes dashed meanwhile), easing from wherever it was
+  left. The HQ-kill finale still owns the camera at the end.
 - **Battle meter:** while at least 2 of your armed units and 2 visible
   enemy ones are in view and shots were fired there in the last 3 s, a slim
   tug-of-war bar under the clock compares Σ cost × HP fraction (turrets and
@@ -2312,6 +2332,7 @@ Left-click select (Shift+click adds or removes a unit), left-drag
 box-select, right-click command, wheel zoom,
 middle-drag or arrows/WASD pan, +/− zoom, P or Space pause, Q select army,
 Delete sell, Esc cancel/deselect, `.` game speed, J jump to the action,
+C cinematic camera (AI vs AI),
 1–3 select a squad (twice quickly: fly there), Ctrl/Cmd/Shift+1–3 save
 one (Shift for browsers that keep Ctrl+digit for tabs). While placing, the
 ghost follows the mouse, a click builds and a right-click cancels. Hold
@@ -2382,7 +2403,7 @@ DOM overlaid on the canvas, re-flowing by orientation:
   the meter beside it so the block clears the selection panel. Edge arrows
   slide past them; spectators don't get them, and a match whose rules ban
   every Drop Pod crew has no Drop Pod button.
-- **Zoom stack** (＋, −, ⚡ jump to the action): left edge in portrait, the
+- **Zoom stack** (＋, −, 🎥 cinematic camera in AI vs AI, ⚡ jump to the action): left edge in portrait, the
   bottom-left corner in landscape (leaving the left column to the ticker).
 - A ticker of short toasts for "building ready", attacks (tap to jump
   there) and hints; minimap pings where you're being hit (amber double
