@@ -8,6 +8,30 @@ Read [Battle Drones—a vibe coded RTS with audio-based multiplayer](https://sim
 
 *The rest of this README is written by Claude.*
 
+## Duel a friend online
+
+Play a 1v1 skirmish against a friend, phone to phone or on any two browsers:
+
+1. On the **Skirmish** tab, choose a map and any mutators, then tap
+   **🌐 Duel a friend online**.
+2. Send your friend the invite link (`…/battledrones/#vs=<code>`). You can
+   use the share sheet or Copy, or let them scan the QR code with their
+   camera.
+3. When they open it you're both in the lobby. You play blue and they play
+   red, and each of you picks an opener. **Rematch** swaps sides.
+
+No accounts and no lobby browser. Both browsers run the whole simulation in
+lockstep and only your orders cross the internet, about one small message
+every 100–200 ms. They go through a tiny WebSocket relay on Fly that pairs
+the two pages by room code and stores nothing
+([`relay/README.md`](relay/README.md)). If a phone drops its connection, it
+reconnects to its seat and the match carries on.
+
+Every end screen, for online duels and every other mode, has a
+**📋 Copy replay JSON** button. Paste the record into **🎬 Watch a replay**
+on the menu to watch the match again, or open it in the
+[battle record viewer](https://simonw.github.io/battledrones/record-viewer.html).
+
 ## Watch AI models play it
 
 AI models can play Battle Drones against each other, through tools that show each side only what it could see (**[AGENT-BATTLES.md](https://github.com/simonw/battledrones/blob/main/AGENT-BATTLES.md)**). Watch the battles so far replay in the game itself, or read them round by round, with
@@ -27,6 +51,11 @@ every order, note and radio line, in the [battle record viewer](https://simonw.g
 
 ## Features
 
+- **1v1 multiplayer**: [duel a friend online](#duel-a-friend-online) on
+  any map, with any mutators. As an experiment, two phones on a table can
+  also duel with no network at all. They talk through their speakers and
+  microphones (🔊 Duel a friend (sound), SOUND-DUEL.md), but the link is a
+  constant high-pitched noise that many people find unpleasant.
 - **Pick an opener, play from second one**: every match starts on three
   cards — Blitz (Fab Plant + 3 Stingers), Industry (a third harvester +
   scrap) or Air Wing (Airpad + 3 Wasps) — and the AI picks its own.
@@ -99,7 +128,8 @@ every order, note and radio line, in the [battle record viewer](https://simonw.g
   rules and fog of war as you — it gathers real waves, fights for the
   Uplinks, answers your infantry, flies Condor drops at your harvesters and
   calls down strikes, and rolls out Goliaths to dig in at distant fields
-  and hunt yours — or watch two AIs fight. Matches are tuned for
+  and hunt yours — or watch two AIs fight, with a 🎥 **cinematic camera**
+  (key C, on by default) that follows the action until you pan or zoom. Matches are tuned for
   comebacks: the side ahead at 4:00 now wins 70% of AI-vs-AI games, not
   90%, and a decided AI-vs-AI game runs a median of about 10½ minutes.
 - **Veteran heroes**: units that rank up earn callsigns ("★★ Viper ·
@@ -146,8 +176,9 @@ every order, note and radio line, in the [battle record viewer](https://simonw.g
   ramp and lets its squads jump down from a troop bay you can see into; the
   Goliath strides on planted feet, digs in on hydraulics and stabiliser
   spikes, and topples when it dies, and the Gantry builds it in stages you
-  can watch. The
-  landscape is a heightfield draped with each map's painted terrain — rock
+  can watch. Turn and zoom every model, beside its card and with its
+  animations, on the [3D models page](https://simonw.github.io/battledrones/models.html).
+  The landscape is a heightfield draped with each map's painted terrain — rock
   outcrops rise into mesas whose cliffs and crags are textured with the
   painted stone of their biome, rivers and lava cut real channels under
   animated water, drifting ice floes or crusted, glowing lava, fords dip
@@ -171,13 +202,6 @@ every order, note and radio line, in the [battle record viewer](https://simonw.g
   rings under units in combat, kill and loss cues that sound different,
   on-screen-only camera shake, and gold "+100" pops with a rising coin
   chime when your harvesters deliver.
-- **Duel a friend online.** On the Skirmish tab, tap 🌐 Duel a friend
-  online and send the link it gives you. Your friend taps it and you're
-  both in the lobby: your map and mutators, blue against red, each picking
-  an opener. Both browsers run the whole simulation in lockstep, and only
-  your orders cross the internet, through a tiny relay that stores nothing
-  (`relay/`). Rematch swaps sides. Two phones on a table can also duel with
-  no network at all, over sound (SOUND-DUEL.md).
 - **Voices and a radio announcer.** Every unit class answers in its own
   synthesized robot voice when selected, ordered, built or promoted. Mastodons
   growl, Wasps buzz, Menders ring and Troopers chatter. A radio commander
